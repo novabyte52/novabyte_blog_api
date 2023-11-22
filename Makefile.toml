@@ -1,0 +1,5 @@
+[env]
+POSTGRES_CONN_STRING = ""
+
+[env.dev]
+POSTGRES_CONN_STRING = "host=localhost dbname=postgres user=novabyte2 password=n7W&^%6^yDYK5g!b"

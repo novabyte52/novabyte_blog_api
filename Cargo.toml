@@ -1,0 +1,24 @@
+[package]
+name = "nb_blog_api"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "nb_lib"
+path = "src/lib/nb_lib.rs"
+
+[dependencies]
+axum = {version = "0.6.20", default-features = true, features = ["headers", "http2", "macros"]}
+cargo-make = "0.37.0"
+chrono = "0.4.30"
+serde = {version = "1.0.188", features = ["derive"]}
+serde_json = "1.0.105"
+surrealdb = "1.0.0"
+tokio = {version = "1.32.0", features = ["full"]}
+tokio-postgres = "0.7.10"
+toml = "0.8.1"
+tower = "0.4.13"
+tower-http = {version = "0.5.0", default-features = true, features = ["cors", "tower"]}
+tracing-subscriber = {version = "0.3.17", default-features = true, features = ["tracing"]}
+uuid = {version = "1.4.1", default-features = true, features=["serde", "v4", "fast-rng", "macro-diagnostics"]}
