@@ -11,6 +11,7 @@ pub async fn post_post() -> Uuid {
 
 // will probably use a guid crate for IDs or something
 pub async fn get_post(Path(post_id): Path<Uuid>) -> Json<Value> {
+    s_posts::create_post().await;
     println!("c: get post");
     let generated_id = s_posts::get_post(post_id).await;
     return Json(json!({ "id": generated_id }));

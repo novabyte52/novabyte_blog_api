@@ -1,4 +1,3 @@
-pub mod config;
 pub mod controllers;
 
 use controllers::c_posts::{get_post, post_post};
@@ -9,7 +8,6 @@ use axum::{
     Router,
 };
 use std::net::SocketAddr;
-use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
 
 #[tokio::main]
@@ -22,7 +20,7 @@ async fn main() {
 
     // run our app with hyper
     // `axum::Server` is a re-export of `hyper::Server`
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([127, 0, 0, 1], 52001));
     println!("listening on {}", addr);
 
     axum::Server::bind(&addr)
@@ -41,7 +39,7 @@ async fn init_api() -> Router {
         // .layer(ServiceBuilder::new().layer(cors))
         // .route("/posts", post(post_post))
         .route("/posts/:post_id", get(get_post))
-        .route_layer(ServiceBuilder::new().layer(cors));
+        .layer(cors);
 }
 
 // consider this for db migration https://docs.rs/refinery/latest/refinery/
