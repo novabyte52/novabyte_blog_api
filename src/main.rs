@@ -35,11 +35,12 @@ async fn init_api() -> Router {
         .allow_methods([Method::GET, Method::POST])
         .allow_origin("http://localhost:9000".parse::<HeaderValue>().unwrap());
 
-    return Router::new()
-        // .layer(ServiceBuilder::new().layer(cors))
-        // .route("/posts", post(post_post))
+    let router = Router::new()
+        .route("/posts", post(post_post))
         .route("/posts/:post_id", get(get_post))
         .layer(cors);
+
+    return router;
 }
 
 // consider this for db migration https://docs.rs/refinery/latest/refinery/

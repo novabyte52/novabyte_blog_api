@@ -1,51 +1,39 @@
+pub mod nova_db;
 
-use serde::{Serialize};
-use surrealdb::engine::remote::ws::{Ws, Client};
-use surrealdb::opt::auth::Root;
-use surrealdb::Surreal;
+use serde::Serialize;
+
+use crate::db::nova_db::NovaDB;
 
 #[derive(Debug, Serialize)]
 struct Person<'a> {
     name: &'a str,
 }
 
-struct SurrealDB {
-    db: Surreal<Client>,
-}
-
-impl SurrealDB {
-    pub async fn new(address: &str, username: &str, password: &str, namespace: &str, database: &str) -> Self {
-        let db = Surreal::new::<Ws>(address).await.unwrap();
-
-        db.signin(Root {
-            username,
-            password,
-        })
-        .await.unwrap();
-
-        db.use_ns(namespace).use_db(database).await.unwrap();
-
-        Self {
-            db
-        }
-    }
+pub struct SurrealDBConnection<'a> {
+    address: &'a str,
+    username: &'a str,
+    password: &'a str,
+    namespace: &'a str,
+    database: &'a str,
 }
 
 pub async fn get_something() {
     println!("insert post");
-    
-    let SurrealDB { db } = SurrealDB::new(
-        "127.0.0.1:52000",
-        "root",
-        "root",
-        "test",
-        "novabyte.blog")
+
+    let NovaDB { novadb } = NovaDB::new(SurrealDBConnection {
+        address: "127.0.0.1:52000",
+        username: "root",
+        password: "root",
+        namespace: "test",
+        database: "novabyte.blog",
+    })
     .await;
 
     // Perform a custom advanced query
-    let groups = db
+    let groups = novadb
         .query("SELECT * FROM type::table($table)")
         .bind(("table", "person"))
-        .await.unwrap();
+        .await
+        .unwrap();
     dbg!(groups);
 }

@@ -4,8 +4,8 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use tokio::time::sleep;
 use uuid::Uuid;
 
-use crate::models::{base::MetaData, post::Post};
 use crate::db::get_something;
+use crate::models::{base::MetaData, post::Post};
 
 pub async fn insert_post() -> Uuid {
     println!("insert post");

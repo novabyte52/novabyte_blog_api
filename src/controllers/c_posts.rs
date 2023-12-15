@@ -1,12 +1,13 @@
 use nb_lib::services::s_posts;
 
-use axum::{extract::Path, Json};
+use axum::{extract::Path, http::StatusCode, response::IntoResponse, Json};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-pub async fn post_post() -> Uuid {
+pub async fn post_post() -> impl IntoResponse {
     println!("c: create post");
-    return s_posts::create_post().await;
+    let foo = s_posts::create_post().await;
+    (StatusCode::CREATED, foo);
 }
 
 // will probably use a guid crate for IDs or something
