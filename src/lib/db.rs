@@ -1,13 +1,7 @@
 pub mod nova_db;
+use nova_db::NovaDB;
 
-use serde::{Serialize, Deserialize};
-
-use crate::db::nova_db::NovaDB;
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Person {
-    name: String,
-}
+use crate::models::user::User;
 
 pub struct SurrealDBConnection<'a> {
     address: &'a str,
@@ -30,9 +24,9 @@ pub async fn get_something() {
     .await;
 
     // Perform a custom advanced query
-    let person = db.query_single::<Person>("SELECT * FROM person").await;
+    let user = db.query_single::<User>("SELECT * FROM user").await;
 
-    match person {
+    match user {
         Some(p) => println!("{:#?}", p),
         _ => println!("nothing found")
     }
