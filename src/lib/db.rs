@@ -1,12 +1,12 @@
 pub mod nova_db;
 
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crate::db::nova_db::NovaDB;
 
-#[derive(Debug, Serialize)]
-struct Person<'a> {
-    name: &'a str,
+#[derive(Debug, Serialize, Deserialize)]
+struct Person {
+    name: String,
 }
 
 pub struct SurrealDBConnection<'a> {
@@ -20,7 +20,7 @@ pub struct SurrealDBConnection<'a> {
 pub async fn get_something() {
     println!("insert post");
 
-    let NovaDB { novadb } = NovaDB::new(SurrealDBConnection {
+    let db = NovaDB::new(SurrealDBConnection {
         address: "127.0.0.1:52000",
         username: "root",
         password: "root",
@@ -30,10 +30,10 @@ pub async fn get_something() {
     .await;
 
     // Perform a custom advanced query
-    let groups = novadb
-        .query("SELECT * FROM type::table($table)")
-        .bind(("table", "person"))
-        .await
-        .unwrap();
-    dbg!(groups);
+    let person = db.query_single::<Person>("SELECT * FROM person").await;
+
+    match person {
+        Some(p) => println!("{:#?}", p),
+        _ => println!("nothing found")
+    }
 }
