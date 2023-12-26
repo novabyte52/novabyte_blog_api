@@ -1,18 +1,21 @@
-use crate::{models::post::Post, repos::r_posts};
+use ulid::Ulid;
 
-use uuid::Uuid;
+use crate::{models::person::Person, repos::r_posts};
 
-pub async fn create_post() -> Uuid {
+pub async fn create_post() -> Person {
     println!("s: create post");
     return r_posts::insert_post().await;
 }
 
-pub async fn get_post(post_id: Uuid) -> Post {
+pub async fn get_post(post_id: Ulid) -> Person {
     println!("s: get post");
+
     return r_posts::select_post(post_id).await;
 }
 
-pub async fn get_posts() -> Vec<u32> {
+pub async fn get_posts() -> Vec<Person> {
     println!("s: get posts");
-    return r_posts::select_posts().await;
+    let foo = r_posts::select_posts().await;
+    println!("s: {:#?}", foo);
+    foo
 }

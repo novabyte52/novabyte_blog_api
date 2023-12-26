@@ -3,3 +3,30 @@ POSTGRES_CONN_STRING = ""
 
 [env.dev]
 POSTGRES_CONN_STRING = "host=localhost dbname=postgres user=novabyte2 password=n7W&^%6^yDYK5g!b"
+
+[tasks.start-db]
+command = "surreal"
+args = ["start", "--log", "trace", "--auth", "--bind", "127.0.0.1:52000", "file:/home/novabyte/novabyte_blog.db"]
+
+[tasks.format]
+install_crate = "rustfmt"
+command = "cargo"
+args = ["fmt", "--", "--emit=files"]
+
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
+
+[tasks.build]
+command = "cargo"
+args = ["build"]
+
+[tasks.run]
+command = "cargo"
+args = ["run"]
+
+[tasks.refresh]
+dependencies = [
+    "format",
+    "run"
+]

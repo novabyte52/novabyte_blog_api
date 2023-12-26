@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "process",
+      "label": "api",
+      "command": "/bin/bash",
+      "args": ["-l"],
+      "problemMatcher": [],
+      "presentation": {
+        "echo": false,
+        "focus": true,
+        "panel": "dedicated"
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      }
+    },
+    {
+      "type": "shell",
+      "label": "start db",
+      "command": "cargo",
+      "args": ["make", "start-db"],
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "focus": false,
+        "panel": "dedicated"
+      },
+    }
+  ]
+}
+  

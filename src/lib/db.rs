@@ -4,11 +4,11 @@ use nova_db::NovaDB;
 use crate::models::user::User;
 
 pub struct SurrealDBConnection<'a> {
-    address: &'a str,
-    username: &'a str,
-    password: &'a str,
-    namespace: &'a str,
-    database: &'a str,
+    pub address: &'a str,
+    pub username: &'a str,
+    pub password: &'a str,
+    pub namespace: &'a str,
+    pub database: &'a str,
 }
 
 pub async fn get_something() {
@@ -24,10 +24,10 @@ pub async fn get_something() {
     .await;
 
     // Perform a custom advanced query
-    let user = db.query_single::<User>("SELECT * FROM user").await;
+    let user = db.query_single::<User>("SELECT * FROM person").await;
 
     match user {
         Some(p) => println!("{:#?}", p),
-        _ => println!("nothing found")
+        _ => println!("nothing found"),
     }
 }
