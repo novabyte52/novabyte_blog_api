@@ -4,6 +4,7 @@ use serde::Serialize;
 use std::fmt::Debug;
 use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::{opt::auth::Root, Surreal};
+
 pub struct NovaDB {
     pub novadb: Surreal<Client>,
 }
@@ -54,20 +55,28 @@ impl NovaDB {
         response.take(0).unwrap()
     }
 
-    pub async fn query_many<T: DeserializeOwned, A: Serialize>(
+    pub async fn query_many<T: DeserializeOwned>(&self, query: &str) -> Vec<T> {
+        let response = &mut self.novadb.query(query).await;
+
+        let result: Vec<T> = match response {
+            Ok(r) => r.take::<Vec<T>>(0).unwrap(),
+            Err(e) => panic!("{:#?}", e),
+        };
+
+        return result;
+    }
+
+    pub async fn query_many_with_args<T: DeserializeOwned, A: Serialize + Debug>(
         &self,
         query: &str,
         args: A,
     ) -> Vec<T> {
-        let response = &mut self
-            .novadb
-            .query(query)
-            .bind(args)
-            .await
-            // TODO: error handling
-            .unwrap();
+        let response = &mut self.novadb.query(query).bind(args).await;
 
-        let result: Vec<T> = response.take::<Vec<T>>(0).unwrap();
+        let result: Vec<T> = match response {
+            Ok(r) => r.take::<Vec<T>>(0).unwrap(),
+            Err(e) => panic!("{:#?}", e),
+        };
 
         return result;
     }

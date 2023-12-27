@@ -1,6 +1,5 @@
 {
   "recommendations": [
-    "rust-lang.rust",
     "rust-lang.rust-analyzer",
     "lyonsyonii.rust-syntax",
     "editorconfig.editorconfig",
