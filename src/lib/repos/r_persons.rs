@@ -1,103 +1,99 @@
-use serde::Serialize;
 use surrealdb::sql::{Id, Thing};
-use ulid::Ulid;
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
-use crate::models::person::Person;
+use crate::models::person::{InsertPersonArgs, Person, PostPerson};
+use crate::models::post::SelectPostArgs;
 
-// TODO: should maybe have a reader and writer per repo
-// for now, this will just do both
-async fn get_db_client() -> NovaDB {
-    NovaDB::new(SurrealDBConnection {
-        address: "127.0.0.1:52000",
-        username: "root",
-        password: "root",
-        namespace: "test",
-        database: "novabyte.blog",
-    })
-    .await
+pub struct PersonsRepo {
+    reader: NovaDB,
+    writer: NovaDB,
 }
 
-pub async fn insert_person() -> Person {
-    println!("insert person");
-    // Perform a custom advanced query
-    let user = get_db_client()
-        .await
-        .query_single::<Person>(
-            r#"
-                CREATE 
-                    person
-                SET 
-                name = 'Generated 01'
-            "#,
-        )
+impl PersonsRepo {
+    pub async fn new() -> Self {
+        let reader = NovaDB::new(SurrealDBConnection {
+            address: "127.0.0.1:52000",
+            username: "root",
+            password: "root",
+            namespace: "test",
+            database: "novabyte.blog",
+        })
         .await;
 
-    match user {
-        Some(p) => {
-            println!("{:#?}", p);
-            p
-        }
-        _ => {
-            panic!("nothing found!");
+        let writer = NovaDB::new(SurrealDBConnection {
+            address: "127.0.0.1:52000",
+            username: "root",
+            password: "root",
+            namespace: "test",
+            database: "novabyte.blog",
+        })
+        .await;
+
+        Self { reader, writer }
+    }
+
+    pub async fn insert_person(&self, new_person: PostPerson, created_by: Thing) -> Person {
+        println!("r: insert post - {:#?}", created_by);
+        // Perform a custom advanced query
+        let user = self
+            .writer
+            .query_single_with_args::<Person, InsertPersonArgs>(
+                r#"
+                    CREATE 
+                        person:ulid()
+                    SET 
+                        email = $email,
+                        username = $username,
+                        meta = {
+                            created_by: $created_by,
+                            created_on: time::now(),
+                            modified_by: NULL,
+                            modified_on: NULL,
+                            deleted_by: NULL,
+                            deleted_on: NULL,
+                        }
+                "#,
+                InsertPersonArgs {
+                    email: new_person.email,
+                    username: new_person.username,
+                    created_by,
+                },
+            )
+            .await;
+
+        match user {
+            Some(p) => {
+                println!("{:#?}", p);
+                p
+            }
+            _ => {
+                panic!("nothing found!");
+            }
         }
     }
-}
 
-#[derive(Debug, Serialize)]
-struct SelectpersonArgs {
-    id: Thing,
-}
+    pub async fn select_person(&self, person_id: Id) -> Person {
+        println!("r: select post: {}", person_id);
 
-pub async fn select_person(person_id: Ulid) -> Person {
-    println!("r: select person: {}", person_id);
-
-    let db_client = get_db_client().await;
-    let query = db_client
-        .novadb
-        .query("SELECT * FROM person WHERE id = $id")
-        .bind(SelectpersonArgs {
-            id: Thing {
-                tb: String::from("person"),
-                id: Id::String(String::from("01HJ4T9031ZWV6N8XM17Z9XV9C")),
+        let query = self.reader.query_single_with_args(
+            "SELECT * FROM person WHERE id = $id",
+            SelectPostArgs {
+                id: Thing {
+                    tb: String::from("person"),
+                    id: Id::String(String::from("01HJ4T9031ZWV6N8XM17Z9XV9C")),
+                },
             },
-        });
+        );
 
-    let mut response = match query.await {
-        Ok(r) => r,
-        Err(e) => panic!("{:#?}", e),
-    };
-
-    let user = response.take(0).unwrap();
-
-    match user {
-        Some(p) => {
-            println!("{:#?}", p);
-            p
-        }
-        _ => {
-            panic!("nothing found!");
+        match query.await {
+            Some(r) => r,
+            None => panic!("Nothing found!"),
         }
     }
-}
 
-pub async fn select_persons() -> Vec<Person> {
-    println!("r: select persons");
-    let cl = get_db_client().await;
-    let mut user = cl.novadb.query("SELECT * FROM person").await.unwrap();
-
-    println!("{:#?}", user);
-
-    let foo: Vec<Person> = match user.take(0) {
-        Ok(u) => {
-            println!("r: persons Ok - {:#?}", u);
-            u
-        }
-        Err(e) => panic!("{:#?}", e),
-    };
-
-    println!("r: returning persons - {:#?}", foo);
-
-    foo
+    pub async fn select_persons(&self) -> Vec<Person> {
+        println!("r: select posts");
+        self.reader.query_many("SELECT * FROM person").await
+    }
 }

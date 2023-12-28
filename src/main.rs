@@ -1,9 +1,12 @@
 pub mod controllers;
 
-use controllers::c_posts::{get_post, get_posts, post_post};
+use controllers::{
+    c_persons::{get_person, get_persons, post_person},
+    c_posts::{get_post, get_posts, post_post},
+};
 
 use axum::{
-    http::{HeaderValue, Method},
+    http::{header, HeaderValue, Method},
     routing::{get, post},
     Router,
 };
@@ -33,14 +36,17 @@ async fn init_api() -> Router {
     // configre cors
     let cors = CorsLayer::new()
         .allow_origin("http://localhost:9000".parse::<HeaderValue>().unwrap())
-        .allow_methods([Method::GET, Method::POST]);
-    // .allow_headers([header::CONTENT_TYPE]); // <- needed for `content-type: application/json`
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers([header::CONTENT_TYPE]); // <- needed for `content-type: application/json`
 
     Router::new()
+        .route("/persons", post(post_person))
+        .route("/persons", get(get_persons))
+        .route("/persons/:person_id", get(get_person))
         .route("/posts", post(post_post))
         .route("/posts", get(get_posts))
         .route("/posts/:post_id", get(get_post))
-        .route_layer(cors)
+        .layer(cors)
 }
 
 // consider this for db migration https://docs.rs/refinery/latest/refinery/

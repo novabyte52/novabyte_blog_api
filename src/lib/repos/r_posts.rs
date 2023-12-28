@@ -4,7 +4,7 @@ use ulid::Ulid;
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::person::Person;
-use crate::models::post::SelectPostArgs;
+use crate::models::post::{Post, SelectPostArgs};
 
 pub struct PostsRepo {
     reader: NovaDB,
@@ -34,18 +34,19 @@ impl PostsRepo {
         Self { reader, writer }
     }
 
-    pub async fn insert_post(&self) -> Person {
+    pub async fn insert_post(&self, author: Person) -> Post {
         println!("insert post");
         // Perform a custom advanced query
         let user = self
             .writer
-            .query_single::<Person>(
+            .query_single_with_args::<Post, Person>(
                 r#"
                     CREATE 
-                        person
+                        post
                     SET 
-                    name = 'Generated 01'
+                    author = $person
                 "#,
+                author,
             )
             .await;
 
@@ -60,7 +61,7 @@ impl PostsRepo {
         }
     }
 
-    pub async fn select_post(&self, post_id: Ulid) -> Person {
+    pub async fn select_post(&self, post_id: Ulid) -> Post {
         println!("r: select post: {}", post_id);
 
         let query = self.reader.query_single_with_args(
@@ -79,7 +80,7 @@ impl PostsRepo {
         }
     }
 
-    pub async fn select_posts(&self) -> Vec<Person> {
+    pub async fn select_posts(&self) -> Vec<Post> {
         println!("r: select posts");
         self.reader.query_many("SELECT * FROM person").await
     }

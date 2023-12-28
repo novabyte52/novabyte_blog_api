@@ -1,4 +1,4 @@
-use nb_lib::services::s_posts;
+use nb_lib::{models::post::Post, services::s_posts};
 
 use axum::{
     extract::{rejection::PathRejection, Path},
@@ -8,9 +8,9 @@ use axum::{
 };
 use ulid::Ulid;
 
-pub async fn post_post() -> impl IntoResponse {
+pub async fn post_post(new_post: Json<Post>) -> impl IntoResponse {
     println!("c: create post");
-    let foo = s_posts::create_post().await;
+    let foo = s_posts::create_post(new_post.0).await;
     Json(foo)
 }
 

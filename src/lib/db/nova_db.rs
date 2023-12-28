@@ -52,7 +52,11 @@ impl NovaDB {
             Err(e) => panic!("{}", e),
         };
 
-        response.take(0).unwrap()
+        println!("RESPONSE=== {:#?}", response);
+        match response.take(0) {
+            Ok(p) => p,
+            Err(e) => panic!("{:#?}", e),
+        }
     }
 
     pub async fn query_many<T: DeserializeOwned>(&self, query: &str) -> Vec<T> {

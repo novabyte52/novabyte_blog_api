@@ -1,21 +1,33 @@
-use ulid::Ulid;
+use surrealdb::sql::{Id, Thing};
 
-use crate::{models::person::Person, repos::r_posts};
+use crate::{
+    models::person::{Person, PostPerson},
+    repos::r_persons::PersonsRepo,
+};
 
-pub async fn create_person() -> Person {
+pub async fn create_person(new_person: PostPerson) -> Person {
     println!("s: create person");
-    return r_persons::insert_person().await;
+    return PersonsRepo::new()
+        .await
+        .insert_person(
+            new_person,
+            Thing {
+                tb: String::from("person"),
+                id: "01HJRVBD6MMBJGWJ7BQV3RANQY".into(),
+            },
+        )
+        .await;
 }
 
-pub async fn get_person(person_id: Ulid) -> Person {
+pub async fn get_person(person_id: Id) -> Person {
     println!("s: get person");
 
-    return r_persons::select_person(person_id).await;
+    return PersonsRepo::new().await.select_person(person_id).await;
 }
 
 pub async fn get_persons() -> Vec<Person> {
     println!("s: get persons");
-    let foo = r_persons::select_persons().await;
+    let foo = PersonsRepo::new().await.select_persons().await;
     println!("s: {:#?}", foo);
     foo
 }
