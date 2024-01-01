@@ -3,6 +3,7 @@
     "rust-lang.rust-analyzer",
     "lyonsyonii.rust-syntax",
     "editorconfig.editorconfig",
-    "wayou.vscode-todo-highlight"
+    "wayou.vscode-todo-highlight",
+    "surrealdb.surrealql",
   ],
 }

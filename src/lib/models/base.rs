@@ -6,6 +6,7 @@ use surrealdb::sql::Thing;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Meta<T> {
+    pub id: Thing,
     pub created_by: Option<Thing>,
     pub created_on: Option<DateTime<Utc>>,
     pub modified_by: Option<Thing>,

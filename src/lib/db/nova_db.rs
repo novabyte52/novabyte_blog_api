@@ -26,62 +26,73 @@ impl NovaDB {
         Self { novadb: db }
     }
 
-    pub async fn query_single<T: DeserializeOwned>(&self, query: &str) -> Option<T> {
-        let response = &mut self
-            .novadb
-            .query(query)
-            .await
-            // TODO: error handling
-            .unwrap();
+    pub async fn query_single<T: DeserializeOwned>(
+        &self,
+        query: &str,
+    ) -> Result<Option<T>, surrealdb::Error> {
+        let query = self.novadb.query(query);
 
-        response.take(0).unwrap()
+        let mut response = match query.await {
+            Ok(r) => r,
+            Err(e) => panic!("Query Error: {:#?}", e),
+        };
+
+        match response.take(0) {
+            Ok(p) => Ok(p),
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn query_single_with_args<T: DeserializeOwned, A: Serialize + Debug>(
         &self,
         query: &str,
         args: A,
-    ) -> Option<T> {
-        println!("args to bind {:#?}", args);
+    ) -> Result<Option<T>, surrealdb::Error> {
         let query = self.novadb.query(query).bind(args);
-
-        println!("query {:#?}", query);
 
         let mut response = match query.await {
             Ok(r) => r,
-            Err(e) => panic!("{}", e),
+            Err(e) => panic!("Query Error: {:#?}", e),
         };
 
-        println!("RESPONSE=== {:#?}", response);
         match response.take(0) {
-            Ok(p) => p,
-            Err(e) => panic!("{:#?}", e),
+            Ok(p) => Ok(p),
+            Err(e) => Err(e),
         }
     }
 
-    pub async fn query_many<T: DeserializeOwned>(&self, query: &str) -> Vec<T> {
-        let response = &mut self.novadb.query(query).await;
+    pub async fn query_many<T: DeserializeOwned>(
+        &self,
+        query: &str,
+    ) -> Result<Vec<T>, surrealdb::Error> {
+        let query = self.novadb.query(query);
 
-        let result: Vec<T> = match response {
-            Ok(r) => r.take::<Vec<T>>(0).unwrap(),
-            Err(e) => panic!("{:#?}", e),
+        let mut response = match query.await {
+            Ok(r) => r,
+            Err(e) => panic!("Query Error: {:#?}", e),
         };
 
-        return result;
+        match response.take(0) {
+            Ok(p) => Ok(p),
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn query_many_with_args<T: DeserializeOwned, A: Serialize + Debug>(
         &self,
         query: &str,
         args: A,
-    ) -> Vec<T> {
-        let response = &mut self.novadb.query(query).bind(args).await;
+    ) -> Result<Vec<T>, surrealdb::Error> {
+        let query = self.novadb.query(query).bind(args);
 
-        let result: Vec<T> = match response {
-            Ok(r) => r.take::<Vec<T>>(0).unwrap(),
-            Err(e) => panic!("{:#?}", e),
+        let mut response = match query.await {
+            Ok(r) => r,
+            Err(e) => panic!("Query Error: {:#?}", e),
         };
 
-        return result;
+        match response.take(0) {
+            Ok(p) => Ok(p),
+            Err(e) => Err(e),
+        }
     }
 }

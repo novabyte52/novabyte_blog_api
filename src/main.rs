@@ -11,12 +11,33 @@ use axum::{
     Router,
 };
 use std::net::SocketAddr;
+use surrealdb::{engine::any::connect, opt::auth::Root};
+use surrealdb_migrations::MigrationRunner;
 use tower_http::cors::CorsLayer;
 
 #[tokio::main]
 async fn main() {
     // initialize tracing
     tracing_subscriber::fmt::init();
+
+    let db = connect("ws:127.0.0.1:52000").await.unwrap();
+
+    // Signin as a namespace, database, or root user
+    db.signin(Root {
+        username: "root",
+        password: "root",
+    })
+    .await
+    .unwrap();
+
+    // Select a specific namespace / database
+    db.use_ns("test").use_db("novabyte.blog").await.unwrap();
+
+    // Apply all migrations
+    MigrationRunner::new(&db)
+        .up()
+        .await
+        .expect("Failed to apply migrations");
 
     // build our application
     let app = init_api().await;
@@ -48,5 +69,3 @@ async fn init_api() -> Router {
         .route("/posts/:post_id", get(get_post))
         .layer(cors)
 }
-
-// consider this for db migration https://docs.rs/refinery/latest/refinery/

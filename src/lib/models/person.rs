@@ -1,7 +1,13 @@
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
 
-use super::base::Meta;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Person {
+    pub id: Thing,
+    pub username: String,
+    pub email: String,
+    pub meta: Thing,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct PostPerson {
@@ -13,13 +19,5 @@ pub struct PostPerson {
 pub struct InsertPersonArgs {
     pub username: String,
     pub email: String,
-    pub created_by: Thing,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Person {
-    pub id: Thing,
-    pub username: String,
-    pub email: String,
-    pub meta: Meta<()>,
+    pub meta: Thing,
 }

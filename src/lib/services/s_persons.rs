@@ -22,7 +22,10 @@ pub async fn create_person(new_person: PostPerson) -> Person {
 pub async fn get_person(person_id: Id) -> Person {
     println!("s: get person");
 
-    return PersonsRepo::new().await.select_person(person_id).await;
+    match PersonsRepo::new().await.select_person(person_id).await {
+        Some(p) => p,
+        None => panic!("No person found"),
+    }
 }
 
 pub async fn get_persons() -> Vec<Person> {

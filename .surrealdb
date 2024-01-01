@@ -1,0 +1,10 @@
+[core]
+    path = "./src/lib/db"
+    schema = "full"
+
+[db]
+    address = "127.0.0.1:52000"
+    username = "root"
+    password = "root"
+    ns = "test"
+    db = "novabyte.blog"

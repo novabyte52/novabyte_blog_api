@@ -1,13 +1,20 @@
+use serde::Serialize;
 use surrealdb::sql::{Id, Thing};
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
+use crate::models::base::Meta;
 use crate::models::person::{InsertPersonArgs, Person, PostPerson};
 use crate::models::post::SelectPostArgs;
 
 pub struct PersonsRepo {
     reader: NovaDB,
     writer: NovaDB,
+}
+
+#[derive(Debug, Serialize)]
+struct InsertMetaArgs {
+    created_by: Thing,
 }
 
 impl PersonsRepo {
@@ -34,9 +41,32 @@ impl PersonsRepo {
     }
 
     pub async fn insert_person(&self, new_person: PostPerson, created_by: Thing) -> Person {
-        println!("r: insert post - {:#?}", created_by);
-        // Perform a custom advanced query
-        let user = self
+        println!("r: insert person - {:#?}", created_by);
+
+        let create_meta = self.writer
+            .query_single_with_args::<Meta<()>, InsertMetaArgs>(
+                r#"
+                    CREATE
+                        meta:ulid()
+                    SET
+                        created_by = $created_by
+                "#,
+                InsertMetaArgs {
+                    created_by: created_by.clone(),
+                },
+            );
+
+        let meta = match create_meta.await {
+            Ok(m) => match m {
+                Some(m) => m,
+                None => panic!("No meta returned, potential issue creating meta for person"),
+            },
+            Err(e) => panic!("Meta creation failed: {:#?}", e),
+        };
+
+        // println!("created meta id: {:#?}", meta);
+
+        let create_user = self
             .writer
             .query_single_with_args::<Person, InsertPersonArgs>(
                 r#"
@@ -45,35 +75,25 @@ impl PersonsRepo {
                     SET 
                         email = $email,
                         username = $username,
-                        meta = {
-                            created_by: $created_by,
-                            created_on: time::now(),
-                            modified_by: NULL,
-                            modified_on: NULL,
-                            deleted_by: NULL,
-                            deleted_on: NULL,
-                        }
+                        meta = $meta;
                 "#,
                 InsertPersonArgs {
                     email: new_person.email,
                     username: new_person.username,
-                    created_by,
+                    meta: meta.id,
                 },
-            )
-            .await;
+            );
 
-        match user {
-            Some(p) => {
-                println!("{:#?}", p);
-                p
-            }
-            _ => {
-                panic!("nothing found!");
-            }
+        match create_user.await {
+            Ok(p) => match p {
+                Some(p) => p,
+                None => panic!("No person returned, potential issue creating person"),
+            },
+            Err(e) => panic!("Error creating user!: {:#?}", e),
         }
     }
 
-    pub async fn select_person(&self, person_id: Id) -> Person {
+    pub async fn select_person(&self, person_id: Id) -> Option<Person> {
         println!("r: select post: {}", person_id);
 
         let query = self.reader.query_single_with_args(
@@ -87,13 +107,20 @@ impl PersonsRepo {
         );
 
         match query.await {
-            Some(r) => r,
-            None => panic!("Nothing found!"),
+            Ok(r) => r,
+            Err(e) => panic!("Nothing found! {:#?}", e),
         }
     }
 
     pub async fn select_persons(&self) -> Vec<Person> {
         println!("r: select posts");
-        self.reader.query_many("SELECT * FROM person").await
+        // self.reader.query_many("SELECT * FROM person").await
+
+        let query = self.reader.query_many("SELECT * FROM person");
+
+        match query.await {
+            Ok(p) => p,
+            Err(e) => panic!("Error selecting persons: {:#?}", e),
+        }
     }
 }

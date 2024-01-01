@@ -51,13 +51,11 @@ impl PostsRepo {
             .await;
 
         match user {
-            Some(p) => {
-                println!("{:#?}", p);
-                p
-            }
-            _ => {
-                panic!("nothing found!");
-            }
+            Ok(p) => match p {
+                Some(p) => p,
+                None => panic!("no post returned"),
+            },
+            Err(e) => panic!("nothing found!: {:#?}", e),
         }
     }
 
@@ -75,13 +73,21 @@ impl PostsRepo {
         );
 
         match query.await {
-            Some(r) => r,
-            None => panic!("Nothing found!"),
+            Ok(r) => match r {
+                Some(r) => r,
+                None => panic!("no post returned"),
+            },
+            Err(e) => panic!("Nothing found!: {:#?}", e),
         }
     }
 
     pub async fn select_posts(&self) -> Vec<Post> {
         println!("r: select posts");
-        self.reader.query_many("SELECT * FROM person").await
+        let query = self.reader.query_many("SELECT * FROM person");
+
+        match query.await {
+            Ok(p) => p,
+            Err(e) => panic!("error selecting posts: {:#?}", e),
+        }
     }
 }
