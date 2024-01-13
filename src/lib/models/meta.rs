@@ -4,6 +4,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
 
+#[derive(Debug, Serialize)]
+pub struct InsertMetaArgs {
+    pub created_by: Thing,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Meta<T> {
     pub id: Thing,

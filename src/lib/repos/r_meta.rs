@@ -2,18 +2,16 @@ use surrealdb::sql::{Id, Thing};
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
-use crate::models::meta::InsertMetaArgs;
-use crate::models::person::{InsertPersonArgs, Person, PostPerson};
+use crate::models::meta::{Meta, InsertMetaArgs};
+use crate::models::person::Person;
 use crate::models::post::SelectPostArgs;
-use crate::repos::r_meta::MetaRepo;
 
-pub struct PersonsRepo {
+pub struct MetaRepo {
     reader: NovaDB,
     writer: NovaDB,
-    meta: MetaRepo
 }
 
-impl PersonsRepo {
+impl MetaRepo {
     pub async fn new() -> Self {
         let reader = NovaDB::new(SurrealDBConnection {
             address: "127.0.0.1:52000",
@@ -31,38 +29,31 @@ impl PersonsRepo {
             database: "novabyte.blog",
         }).await;
 
-        Self { reader, writer, meta: MetaRepo::new().await }
+        Self { reader, writer }
     }
 
-    pub async fn insert_person(&self, new_person: PostPerson, created_by: Thing) -> Person {
-        println!("r: insert person - {:#?}", created_by);
+    pub async fn insert_meta(&self, new_meta: InsertMetaArgs) -> Meta<()> {
+        println!("r: insert meta - {:#?}", new_meta);
 
-        let meta = self.meta.insert_meta(InsertMetaArgs {created_by}).await;
-
-        let create_user = self
-            .writer
-            .query_single_with_args::<Person, InsertPersonArgs>(
+        let create_meta = self.writer
+            .query_single_with_args::<Meta<()>, InsertMetaArgs>(
                 r#"
-                    CREATE 
-                        person:ulid()
-                    SET 
-                        email = $email,
-                        username = $username,
-                        meta = $meta;
+                    CREATE
+                        meta:ulid()
+                    SET
+                        created_by = $created_by
                 "#,
-                InsertPersonArgs {
-                    email: new_person.email,
-                    username: new_person.username,
-                    meta: meta.id,
-                },
+                new_meta,
             );
 
-        match create_user.await {
-            Ok(p) => match p {
-                Some(p) => p,
-                None => panic!("No person returned, potential issue creating person"),
-            },
-            Err(e) => panic!("Error creating user!: {:#?}", e),
+        let response = match create_meta.await {
+            Ok(m) => m,
+            Err(e) => panic!("Meta creation failed: {:#?}", e),
+        };
+
+        match response {
+            Some(m) => m,
+            None => panic!("No meta returned, potential issue creating meta for person"),
         }
     }
 

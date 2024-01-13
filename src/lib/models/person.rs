@@ -1,12 +1,18 @@
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Person {
     pub id: Thing,
     pub username: String,
     pub email: String,
+    pass_hash: String,
     pub meta: Thing,
+}
+
+pub struct Creds {
+    pub username: String,
+    pub password: String
 }
 
 #[derive(Debug, Deserialize)]
