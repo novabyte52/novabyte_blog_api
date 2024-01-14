@@ -5,5 +5,7 @@
     "editorconfig.editorconfig",
     "wayou.vscode-todo-highlight",
     "surrealdb.surrealql",
+    "serayuzgur.crates",
+    "tamasfe.even-better-toml",
   ],
 }

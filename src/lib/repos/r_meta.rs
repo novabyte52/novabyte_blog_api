@@ -2,7 +2,7 @@ use surrealdb::sql::{Id, Thing};
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
-use crate::models::meta::{Meta, InsertMetaArgs};
+use crate::models::meta::{InsertMetaArgs, Meta};
 use crate::models::person::Person;
 use crate::models::post::SelectPostArgs;
 
@@ -19,7 +19,8 @@ impl MetaRepo {
             password: "root",
             namespace: "test",
             database: "novabyte.blog",
-        }).await;
+        })
+        .await;
 
         let writer = NovaDB::new(SurrealDBConnection {
             address: "127.0.0.1:52000",
@@ -27,7 +28,8 @@ impl MetaRepo {
             password: "root",
             namespace: "test",
             database: "novabyte.blog",
-        }).await;
+        })
+        .await;
 
         Self { reader, writer }
     }
@@ -35,7 +37,8 @@ impl MetaRepo {
     pub async fn insert_meta(&self, new_meta: InsertMetaArgs) -> Meta<()> {
         println!("r: insert meta - {:#?}", new_meta);
 
-        let create_meta = self.writer
+        let create_meta = self
+            .writer
             .query_single_with_args::<Meta<()>, InsertMetaArgs>(
                 r#"
                     CREATE

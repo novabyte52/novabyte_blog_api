@@ -10,20 +10,32 @@ pub struct Person {
     pub meta: Thing,
 }
 
+#[derive(Debug, Deserialize)]
 pub struct Creds {
     pub username: String,
-    pub password: String
+    pub email: String,
+    pub password: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PostPerson {
     pub username: String,
     pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SignUpState {
+    pub username: String,
+    pub email: String,
+    pub password: String,
+    pub pass_hash: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct InsertPersonArgs {
     pub username: String,
     pub email: String,
+    pub pass_hash: String,
     pub meta: Thing,
 }

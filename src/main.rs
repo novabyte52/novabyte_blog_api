@@ -61,7 +61,7 @@ async fn init_api() -> Router {
         .allow_headers([header::CONTENT_TYPE]); // <- needed for `content-type: application/json`
 
     Router::new()
-        .route("/persons", post(post_person))
+        .route("/persons/signup", post(post_person))
         .route("/persons", get(get_persons))
         .route("/persons/:person_id", get(get_person))
         .route("/posts", post(post_post))

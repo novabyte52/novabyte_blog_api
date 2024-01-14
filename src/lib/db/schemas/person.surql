@@ -7,4 +7,5 @@ DEFINE TABLE person SCHEMAFULL
 
 DEFINE FIELD username ON person TYPE string;
 DEFINE FIELD email ON person TYPE string ASSERT string::is::email($value);
+DEFINE FIELD pass_hash ON person TYPE string;
 DEFINE FIELD meta ON person TYPE record<meta>;

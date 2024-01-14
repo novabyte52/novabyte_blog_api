@@ -3,14 +3,14 @@ use surrealdb::sql::{Id, Thing};
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::InsertMetaArgs;
-use crate::models::person::{InsertPersonArgs, Person, PostPerson};
+use crate::models::person::{InsertPersonArgs, Person, SignUpState};
 use crate::models::post::SelectPostArgs;
 use crate::repos::r_meta::MetaRepo;
 
 pub struct PersonsRepo {
     reader: NovaDB,
     writer: NovaDB,
-    meta: MetaRepo
+    meta: MetaRepo,
 }
 
 impl PersonsRepo {
@@ -21,7 +21,8 @@ impl PersonsRepo {
             password: "root",
             namespace: "test",
             database: "novabyte.blog",
-        }).await;
+        })
+        .await;
 
         let writer = NovaDB::new(SurrealDBConnection {
             address: "127.0.0.1:52000",
@@ -29,15 +30,25 @@ impl PersonsRepo {
             password: "root",
             namespace: "test",
             database: "novabyte.blog",
-        }).await;
+        })
+        .await;
 
-        Self { reader, writer, meta: MetaRepo::new().await }
+        Self {
+            reader,
+            writer,
+            meta: MetaRepo::new().await,
+        }
     }
 
-    pub async fn insert_person(&self, new_person: PostPerson, created_by: Thing) -> Person {
+    pub async fn insert_person(&self, new_person: SignUpState, created_by: Thing) -> Person {
         println!("r: insert person - {:#?}", created_by);
 
-        let meta = self.meta.insert_meta(InsertMetaArgs {created_by}).await;
+        let pass_hash = match new_person.pass_hash {
+            Some(ph) => ph,
+            None => panic!("Can't create user without the password hash!"),
+        };
+
+        let meta = self.meta.insert_meta(InsertMetaArgs { created_by }).await;
 
         let create_user = self
             .writer
@@ -48,11 +59,13 @@ impl PersonsRepo {
                     SET 
                         email = $email,
                         username = $username,
+                        pass_hash = $pass_hash,
                         meta = $meta;
                 "#,
                 InsertPersonArgs {
                     email: new_person.email,
                     username: new_person.username,
+                    pass_hash,
                     meta: meta.id,
                 },
             );
