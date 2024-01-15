@@ -6,7 +6,6 @@ pub struct Person {
     pub id: Thing,
     pub username: String,
     pub email: String,
-    pass_hash: String,
     pub meta: Thing,
 }
 
