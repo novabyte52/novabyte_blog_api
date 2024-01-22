@@ -1,7 +1,7 @@
 pub mod controllers;
 
 use controllers::{
-    c_persons::{get_person, get_persons, post_person},
+    c_persons::{get_person, get_persons, login_person, signup_person},
     c_posts::{get_post, get_posts, post_post},
 };
 
@@ -61,7 +61,8 @@ async fn init_api() -> Router {
         .allow_headers([header::CONTENT_TYPE]); // <- needed for `content-type: application/json`
 
     Router::new()
-        .route("/persons/signup", post(post_person))
+        .route("/persons/signup", post(signup_person))
+        .route("/persons/login", post(login_person))
         .route("/persons", get(get_persons))
         .route("/persons/:person_id", get(get_person))
         .route("/posts", post(post_post))

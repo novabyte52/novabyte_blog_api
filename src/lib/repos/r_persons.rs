@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use surrealdb::sql::{Id, Thing};
 
 use crate::db::nova_db::NovaDB;
@@ -95,6 +97,44 @@ impl PersonsRepo {
         match query.await {
             Ok(r) => r,
             Err(e) => panic!("Nothing found! {:#?}", e),
+        }
+    }
+
+    pub async fn select_person_by_email(&self, email: String) -> Option<Person> {
+        println!("r: select person by email");
+
+        let query = self
+            .reader
+            .query_single_with_args::<Person, (String, String)>(
+                "SELECT * FROM person WHERE email = $email",
+                (String::from("email"), email),
+            );
+
+        match query.await {
+            Ok(p) => p,
+            Err(e) => panic!("Error selecting persons: {:#?}", e),
+        }
+    }
+
+    pub async fn select_person_hash_by_email(&self, email: String) -> String {
+        println!("r: select person hash by email");
+
+        let query = self
+            .reader
+            .query_single_with_args::<HashMap<String, String>, (String, String)>(
+                "SELECT pass_hash FROM person WHERE email = $email",
+                (String::from("email"), email),
+            );
+
+        match query.await {
+            Ok(r) => match r {
+                Some(h) => match h.get("pass_hash") {
+                    Some(h) => h.to_string(),
+                    None => panic!("No person hash found in map"),
+                },
+                None => panic!("No person hash record found"),
+            },
+            Err(e) => panic!("Error selecting persons: {:#?}", e),
         }
     }
 

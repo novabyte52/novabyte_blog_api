@@ -10,7 +10,13 @@ pub struct Person {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Creds {
+pub struct LogInCreds {
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SignUpCreds {
     pub username: String,
     pub email: String,
     pub password: String,

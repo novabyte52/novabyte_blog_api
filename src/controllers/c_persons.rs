@@ -5,13 +5,13 @@ use axum::{
     Json,
 };
 use nb_lib::{
-    models::person::{Creds, SignUpState},
+    models::person::{LogInCreds, SignUpCreds, SignUpState},
     services::s_persons,
 };
 use ulid::Ulid;
 
 // was named sign_up() but to stick with conventions for now it will be post_person
-pub async fn post_person(Json(creds): Json<Creds>) -> impl IntoResponse {
+pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse {
     let new_person = s_persons::sign_up(SignUpState {
         username: creds.username,
         email: creds.email,
@@ -23,13 +23,11 @@ pub async fn post_person(Json(creds): Json<Creds>) -> impl IntoResponse {
     Json(new_person)
 }
 
-pub async fn login(Json(_creds): Json<Creds>) -> impl IntoResponse {
+pub async fn login_person(Json(creds): Json<LogInCreds>) -> impl IntoResponse {
     // TODO: create a way to fetch persons based on their login credentials
-    // let person = get_person(creds.password).await;
+    let person = s_persons::log_in(creds).await;
 
-    // TODO: replace this parsed_hash var with the above persons pass_hash
-    // let parsed_hash = PasswordHash::new(&password_hash).unwrap();
-    // assert!(Argon2::default().verify_password(creds.password.as_bytes(), &parsed_hash).is_ok());
+    Json(person)
 }
 
 pub async fn get_person(person_id: Result<Path<Ulid>, PathRejection>) -> impl IntoResponse {

@@ -1,12 +1,12 @@
 use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
-    Argon2, PasswordHasher,
+    Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
 use surrealdb::sql::Id;
 
 use crate::{
     constants::Constants,
-    models::person::{Person, SignUpState},
+    models::person::{LogInCreds, Person, SignUpState},
     repos::r_persons::PersonsRepo,
 };
 
@@ -25,6 +25,33 @@ pub async fn sign_up(mut sign_up_state: SignUpState) -> Person {
         .await
         .insert_person(sign_up_state, Constants::system_thing().clone())
         .await
+}
+
+pub async fn log_in(creds: LogInCreds) -> Person {
+    println!("s: log in");
+    let pass_hash = PersonsRepo::new()
+        .await
+        .select_person_hash_by_email(creds.email.clone())
+        .await;
+
+    let parsed_hash = PasswordHash::new(&pass_hash).unwrap();
+    let matches = Argon2::default()
+        .verify_password(creds.password.as_bytes(), &parsed_hash)
+        .is_ok();
+
+    if !matches {
+        panic!("passwords don't match!");
+    }
+
+    // TODO: select person by email, return person
+    match PersonsRepo::new()
+        .await
+        .select_person_by_email(creds.email)
+        .await
+    {
+        Some(p) => p,
+        None => panic!("No person found for that email"),
+    }
 }
 
 // pub async fn create_person(new_person: PostPerson) -> Person {
