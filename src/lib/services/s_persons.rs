@@ -43,7 +43,6 @@ pub async fn log_in(creds: LogInCreds) -> Person {
         panic!("passwords don't match!");
     }
 
-    // TODO: select person by email, return person
     match PersonsRepo::new()
         .await
         .select_person_by_email(creds.email)

@@ -4,13 +4,17 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use jwt_simple::{
+    algorithms::{HS256Key, MACLike},
+    claims::Claims,
+    reexports::coarsetime::Duration,
+};
 use nb_lib::{
     models::person::{LogInCreds, SignUpCreds, SignUpState},
     services::s_persons,
 };
 use ulid::Ulid;
 
-// was named sign_up() but to stick with conventions for now it will be post_person
 pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse {
     let new_person = s_persons::sign_up(SignUpState {
         username: creds.username,
@@ -24,7 +28,6 @@ pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse 
 }
 
 pub async fn login_person(Json(creds): Json<LogInCreds>) -> impl IntoResponse {
-    // TODO: create a way to fetch persons based on their login credentials
     let person = s_persons::log_in(creds).await;
 
     Json(person)
@@ -52,4 +55,14 @@ pub async fn get_persons() -> impl IntoResponse {
     println!("c: {:#?}", persons);
 
     Json(persons)
+}
+
+async fn generate_token() -> String {
+    let key = HS256Key::generate();
+
+    let claims = Claims::create(Duration::from_hours(1));
+    match key.authenticate(claims) {
+        Ok(t) => t,
+        Err(e) => panic!("token failed: {}", e),
+    }
 }

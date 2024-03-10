@@ -1,19 +1,23 @@
-pub mod controllers;
-
-use controllers::{
-    c_persons::{get_person, get_persons, login_person, signup_person},
-    c_posts::{get_post, get_posts, post_post},
-};
-
 use axum::{
     http::{header, HeaderValue, Method},
+    middleware::from_extractor,
     routing::{get, post},
     Router,
 };
 use std::net::SocketAddr;
 use surrealdb::{engine::any::connect, opt::auth::Root};
 use surrealdb_migrations::MigrationRunner;
+use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
+
+pub mod controllers;
+pub mod middleware;
+
+use controllers::{
+    c_persons::{get_person, get_persons, login_person, signup_person},
+    c_posts::{get_post, get_posts, post_post},
+};
+use middleware::RequireAuth;
 
 #[tokio::main]
 async fn main() {
@@ -42,15 +46,15 @@ async fn main() {
     // build our application
     let app = init_api().await;
 
-    // run our app with hyper
-    // `axum::Server` is a re-export of `hyper::Server`
-    let addr = SocketAddr::from(([127, 0, 0, 1], 52001));
-    println!("listening on {}", addr);
+    // run our app
+    serve(app, 52001).await;
+}
 
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+async fn serve(app: Router, port: u16) {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let listener = TcpListener::bind(addr).await.unwrap();
+    println!("listening on {}", addr);
+    axum::serve(listener, app).await.unwrap();
 }
 
 async fn init_api() -> Router {
@@ -68,5 +72,6 @@ async fn init_api() -> Router {
         .route("/posts", post(post_post))
         .route("/posts", get(get_posts))
         .route("/posts/:post_id", get(get_post))
+        .route_layer(from_extractor::<RequireAuth>())
         .layer(cors)
 }

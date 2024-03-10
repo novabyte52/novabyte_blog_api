@@ -10,16 +10,19 @@ path = "src/lib/nb_lib.rs"
 
 [dependencies]
 argon2 = "0.5.2"
-axum = "0.6.20"
+axum = "0.7.4"
 cargo-make = "0.37.0"
 chrono = "0.4.30"
+jwt-simple = { version = "0.12.9", default-features = false, features = [
+    "pure-rust",
+] }
 serde = "1.0.188"
 serde_json = "1.0.105"
 surrealdb = "1.0.2"
 surrealdb-migrations = "1.0.1"
-tokio = {version = "1.32.0", features = ["full"]}
+tokio = { version = "1.32.0", features = ["full"] }
 toml = "0.8.1"
 tower = "0.4.13"
-tower-http = {version = "0.4.0", features = ["cors"]}
+tower-http = { version = "0.5.0", features = ["cors", "trace"] }
 tracing-subscriber = "0.3.17"
 ulid = "1.1.0"
