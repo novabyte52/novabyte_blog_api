@@ -1,9 +1,16 @@
-[env]
-NOVA_SECRET = "aa6ba4dea077750b20bbe8dbd0c36b1530d3972931d040ff0aca6b833aea1504"
+env_files = ["../nb_secrets.env"]
 
 [tasks.start-db]
 command = "surreal"
-args = ["start", "--log", "trace", "--auth", "--bind", "127.0.0.1:52000", "file:/home/novabyte/novabyte_blog.db"]
+args = [
+    "start",
+    "--log",
+    "trace",
+    "--auth",
+    "--bind",
+    "127.0.0.1:52000",
+    "file:/home/novabyte/novabyte_blog.db",
+]
 # args = ["start", "--log", "trace", "--auth", "--bind", "127.0.0.1:52000", "file:/home/evan/novabyte_blog/"]
 
 [tasks.format]
@@ -21,10 +28,7 @@ args = ["build"]
 
 [tasks.run]
 command = "cargo"
-args = ["run"]
+args = ["run", "NOVA_SECRET=${NOVA_SECRET}"]
 
 [tasks.refresh]
-dependencies = [
-    "format",
-    "run"
-]
+dependencies = ["format", "run"]

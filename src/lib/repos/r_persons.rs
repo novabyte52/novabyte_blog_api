@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use surrealdb::sql::{Id, Thing};
+use surrealdb::sql::Thing;
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
@@ -81,17 +81,12 @@ impl PersonsRepo {
         }
     }
 
-    pub async fn select_person(&self, person_id: Id) -> Option<Person> {
+    pub async fn select_person(&self, person_id: Thing) -> Option<Person> {
         println!("r: select post: {}", person_id);
 
         let query = self.reader.query_single_with_args(
             "SELECT * FROM person WHERE id = $id",
-            SelectPostArgs {
-                id: Thing {
-                    tb: String::from("person"),
-                    id: Id::String(String::from("01HJ4T9031ZWV6N8XM17Z9XV9C")),
-                },
-            },
+            SelectPostArgs { id: person_id },
         );
 
         match query.await {

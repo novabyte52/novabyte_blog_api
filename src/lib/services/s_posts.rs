@@ -7,7 +7,7 @@ pub async fn create_post(new_post: Post) -> Post {
     println!("s: create post");
     PostsRepo::new()
         .await
-        .insert_post(get_person(new_post.author.id.id).await)
+        .insert_post(get_person(new_post.author.id).await.expect(""))
         .await
 }
 

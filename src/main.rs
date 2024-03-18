@@ -1,6 +1,6 @@
 use axum::{
     http::{header, HeaderValue, Method},
-    middleware::from_extractor,
+    middleware::from_fn,
     routing::{get, post},
     Router,
 };
@@ -17,14 +17,16 @@ use controllers::{
     c_persons::{get_person, get_persons, login_person, signup_person},
     c_posts::{get_post, get_posts, post_post},
 };
-use middleware::RequireAuth;
+use middleware::require_authentication;
 
 #[tokio::main]
 async fn main() {
     // initialize tracing
     tracing_subscriber::fmt::init();
 
-    let db = connect("ws:127.0.0.1:52000").await.unwrap();
+    let db = connect("ws:127.0.0.1:52000")
+        .await
+        .expect("Unable to connect to database. Is it running?");
 
     // Signin as a namespace, database, or root user
     db.signin(Root {
@@ -32,10 +34,13 @@ async fn main() {
         password: "root",
     })
     .await
-    .unwrap();
+    .expect("Unable to login to database. Review credentials.");
 
     // Select a specific namespace / database
-    db.use_ns("test").use_db("novabyte.blog").await.unwrap();
+    db.use_ns("test")
+        .use_db("novabyte.blog")
+        .await
+        .expect("Unable to access specified namespace or database.");
 
     // Apply all migrations
     MigrationRunner::new(&db)
@@ -62,16 +67,17 @@ async fn init_api() -> Router {
     let cors = CorsLayer::new()
         .allow_origin("http://localhost:9000".parse::<HeaderValue>().unwrap())
         .allow_methods([Method::GET, Method::POST])
-        .allow_headers([header::CONTENT_TYPE]); // <- needed for `content-type: application/json`
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]); // <- needed for `content-type: application/json`
 
     Router::new()
         .route("/persons/signup", post(signup_person))
-        .route("/persons/login", post(login_person))
         .route("/persons", get(get_persons))
         .route("/persons/:person_id", get(get_person))
         .route("/posts", post(post_post))
         .route("/posts", get(get_posts))
         .route("/posts/:post_id", get(get_post))
-        .route_layer(from_extractor::<RequireAuth>())
+        // .route_layer(from_extractor::<RequireAuth>())
+        .route_layer(from_fn(require_authentication))
+        .route("/persons/login", post(login_person))
         .layer(cors)
 }

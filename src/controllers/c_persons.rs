@@ -1,8 +1,10 @@
+use std::env;
+
 use axum::{
     extract::{rejection::PathRejection, Path},
     http::StatusCode,
     response::IntoResponse,
-    Json,
+    Extension, Json,
 };
 use jwt_simple::{
     algorithms::{HS256Key, MACLike},
@@ -10,10 +12,13 @@ use jwt_simple::{
     reexports::coarsetime::Duration,
 };
 use nb_lib::{
-    models::person::{LogInCreds, SignUpCreds, SignUpState},
+    models::{
+        custom_claims::CustomClaims,
+        person::{LogInCreds, Person, SignUpCreds, SignUpState},
+    },
     services::s_persons,
 };
-use ulid::Ulid;
+use surrealdb::sql::Thing;
 
 pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse {
     let new_person = s_persons::sign_up(SignUpState {
@@ -28,12 +33,12 @@ pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse 
 }
 
 pub async fn login_person(Json(creds): Json<LogInCreds>) -> impl IntoResponse {
-    let person = s_persons::log_in(creds).await;
+    let person = s_persons::log_in_with_creds(creds).await;
 
-    Json(person)
+    generate_token(person)
 }
 
-pub async fn get_person(person_id: Result<Path<Ulid>, PathRejection>) -> impl IntoResponse {
+pub async fn get_person(person_id: Result<Path<Thing>, PathRejection>) -> impl IntoResponse {
     println!("c: get person");
 
     let id = match person_id {
@@ -43,12 +48,13 @@ pub async fn get_person(person_id: Result<Path<Ulid>, PathRejection>) -> impl In
 
     println!("c: person id - {:#?}", id);
 
-    let generated_id = s_persons::get_person(id.0.to_string().into()).await;
+    let generated_id = s_persons::get_person(id.0).await;
     Ok(Json(generated_id))
 }
 
-pub async fn get_persons() -> impl IntoResponse {
+pub async fn get_persons(Extension(current_user): Extension<Person>) -> impl IntoResponse {
     println!("c: get persons");
+    println!("current user: {:?}", current_user);
 
     let persons = s_persons::get_persons().await;
 
@@ -57,10 +63,19 @@ pub async fn get_persons() -> impl IntoResponse {
     Json(persons)
 }
 
-async fn generate_token() -> String {
-    let key = HS256Key::generate();
+fn generate_token(person: Person) -> String {
+    let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
 
-    let claims = Claims::create(Duration::from_hours(1));
+    let key = HS256Key::from_bytes(secret.as_bytes());
+
+    let custom_claims = CustomClaims {
+        name: person.email,
+        is_admin: true,
+    };
+
+    let claims = Claims::with_custom_claims(custom_claims, Duration::from_hours(1))
+        .with_subject(person.id.id);
+
     match key.authenticate(claims) {
         Ok(t) => t,
         Err(e) => panic!("token failed: {}", e),
