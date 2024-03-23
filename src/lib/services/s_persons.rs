@@ -1,17 +1,14 @@
-use std::env;
-
 use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
-use jwt_simple::algorithms::{HS256Key, MACLike};
 use surrealdb::sql::Thing;
 
 use crate::{
     constants::Constants,
     models::{
-        custom_claims::CustomClaims,
         person::{LogInCreds, Person, SignUpState},
+        token::Token,
     },
     repos::r_persons::PersonsRepo,
 };
@@ -59,26 +56,22 @@ pub async fn log_in_with_creds(creds: LogInCreds) -> Person {
     }
 }
 
-pub async fn log_in_with_token(token: &str) -> Option<Person> {
-    // verify token against secret key
-    let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
-
-    let key = HS256Key::from_bytes(secret.as_bytes());
-
-    let claims = key
-        .verify_token::<CustomClaims>(token, None)
-        .expect("Could not verify token.");
-
-    println!("claims: {:#?}", claims.custom);
-
-    match PersonsRepo::new()
+pub async fn create_refresh_token(person_id: Thing) -> Token {
+    PersonsRepo::new()
         .await
-        .select_person_by_email(claims.custom.name)
+        .insert_token_record(person_id)
         .await
-    {
-        Some(p) => Some(p),
-        None => panic!("No person found for that email"),
-    }
+}
+
+pub async fn get_token_record(token_id: Thing) -> Token {
+    PersonsRepo::new().await.select_token_record(token_id).await
+}
+
+pub async fn soft_delete_token_record(token_id: Thing) {
+    PersonsRepo::new()
+        .await
+        .soft_delete_token_record(&token_id)
+        .await
 }
 
 // pub async fn create_person(new_person: PostPerson) -> Person {

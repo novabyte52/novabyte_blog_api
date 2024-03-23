@@ -7,6 +7,7 @@ use crate::db::SurrealDBConnection;
 use crate::models::meta::InsertMetaArgs;
 use crate::models::person::{InsertPersonArgs, Person, SignUpState};
 use crate::models::post::SelectPostArgs;
+use crate::models::token::{BareToken, InsertTokenArgs, SelectTokenArgs, Token};
 use crate::repos::r_meta::MetaRepo;
 
 pub struct PersonsRepo {
@@ -77,7 +78,7 @@ impl PersonsRepo {
                 Some(p) => p,
                 None => panic!("No person returned, potential issue creating person"),
             },
-            Err(e) => panic!("Error creating user!: {:#?}", e),
+            Err(e) => panic!("Error creating user!: {}", e),
         }
     }
 
@@ -91,7 +92,7 @@ impl PersonsRepo {
 
         match query.await {
             Ok(r) => r,
-            Err(e) => panic!("Nothing found! {:#?}", e),
+            Err(e) => panic!("Nothing found! {}", e),
         }
     }
 
@@ -107,7 +108,7 @@ impl PersonsRepo {
 
         match query.await {
             Ok(p) => p,
-            Err(e) => panic!("Error selecting persons: {:#?}", e),
+            Err(e) => panic!("Error selecting persons: {}", e),
         }
     }
 
@@ -129,7 +130,7 @@ impl PersonsRepo {
                 },
                 None => panic!("No person hash record found"),
             },
-            Err(e) => panic!("Error selecting persons: {:#?}", e),
+            Err(e) => panic!("Error selecting persons: {}", e),
         }
     }
 
@@ -140,7 +141,84 @@ impl PersonsRepo {
 
         match query.await {
             Ok(p) => p,
-            Err(e) => panic!("Error selecting persons: {:#?}", e),
+            Err(e) => panic!("Error selecting persons: {}", e),
         }
+    }
+
+    pub async fn select_token_record(&self, token_id: Thing) -> Token {
+        println!("token_id: {:#?}", token_id);
+
+        let query = self
+            .reader
+            .query_single_with_args::<Token, SelectTokenArgs>(
+                "SELECT * FROM nb_token WHERE id = $id FETCH meta;",
+                SelectTokenArgs {
+                    id: token_id.clone(),
+                },
+            );
+
+        match query.await {
+            Ok(r) => match r {
+                Some(t) => t,
+                None => panic!("No token found for token_id: {}", token_id),
+            },
+            Err(e) => panic!("Error selecting token: {}", e),
+        }
+    }
+
+    pub async fn insert_token_record(&self, person_id: Thing) -> Token {
+        let meta = self
+            .meta
+            .insert_meta(InsertMetaArgs {
+                created_by: person_id.clone(),
+            })
+            .await;
+
+        let query = self
+            .reader
+            .query_single_with_args::<BareToken, InsertTokenArgs>(
+                r#"
+                    CREATE 
+                        nb_token:ulid()
+                    SET 
+                        person = $person,
+                        meta = $meta;
+                "#,
+                InsertTokenArgs {
+                    person: person_id,
+                    meta: meta.id,
+                },
+            );
+
+        let bare_token = match query.await {
+            Ok(r) => match r {
+                Some(t) => t,
+                None => panic!("Unable to insert token."),
+            },
+            Err(e) => panic!("Error inserting token: {}", e),
+        };
+
+        let meta = match self.meta.select_meta(bare_token.meta).await {
+            Some(m) => m,
+            None => panic!("Meta not found!"),
+        };
+
+        Token {
+            id: bare_token.id,
+            person: bare_token.person,
+            meta,
+        }
+    }
+
+    pub async fn soft_delete_token_record(&self, token_id: &Thing) {
+        let query = self.reader.query_none_with_args::<(String, &Thing)>(
+            r#"
+                LET $meta_id = (SELECT meta FROM nb_token WHERE id = $token_id);
+                UPDATE $meta_id.meta SET deleted_on = time::now();
+            "#,
+            ("token_id".into(), &token_id),
+        );
+
+        query.await
     }
 }

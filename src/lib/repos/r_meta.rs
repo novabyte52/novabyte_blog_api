@@ -1,10 +1,8 @@
-use surrealdb::sql::{Id, Thing};
+use surrealdb::sql::Thing;
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::{InsertMetaArgs, Meta};
-use crate::models::person::Person;
-use crate::models::post::SelectPostArgs;
 
 pub struct MetaRepo {
     reader: NovaDB,
@@ -60,33 +58,19 @@ impl MetaRepo {
         }
     }
 
-    pub async fn select_person(&self, person_id: Id) -> Option<Person> {
-        println!("r: select post: {}", person_id);
+    pub async fn select_meta(&self, meta_id: Thing) -> Option<Meta<()>> {
+        println!("r: select meta: {}", meta_id);
 
-        let query = self.reader.query_single_with_args(
-            "SELECT * FROM person WHERE id = $id",
-            SelectPostArgs {
-                id: Thing {
-                    tb: String::from("person"),
-                    id: Id::String(String::from("01HJ4T9031ZWV6N8XM17Z9XV9C")),
-                },
-            },
-        );
+        let query = self
+            .reader
+            .query_single_with_args::<Meta<()>, (String, Thing)>(
+                "SELECT * FROM meta WHERE id = $id",
+                ("id".into(), meta_id),
+            );
 
         match query.await {
             Ok(r) => r,
-            Err(e) => panic!("Nothing found! {:#?}", e),
-        }
-    }
-
-    pub async fn select_persons(&self) -> Vec<Person> {
-        println!("r: select posts");
-
-        let query = self.reader.query_many("SELECT * FROM person");
-
-        match query.await {
-            Ok(p) => p,
-            Err(e) => panic!("Error selecting persons: {:#?}", e),
+            Err(e) => panic!("Meta object not found: {:#?}", e),
         }
     }
 }

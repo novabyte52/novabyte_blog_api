@@ -44,3 +44,8 @@ pub struct InsertPersonArgs {
     pub pass_hash: String,
     pub meta: Thing,
 }
+
+#[derive(Debug, Serialize)]
+pub struct TokenResponse {
+    pub token: String,
+}

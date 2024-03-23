@@ -12,8 +12,8 @@ pub struct InsertMetaArgs {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Meta<T> {
     pub id: Thing,
-    pub created_by: Option<Thing>,
-    pub created_on: Option<DateTime<Utc>>,
+    pub created_by: Thing,
+    pub created_on: DateTime<Utc>,
     pub modified_by: Option<Thing>,
     pub modified_on: Option<DateTime<Utc>>,
     pub deleted_by: Option<Thing>,

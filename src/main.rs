@@ -1,5 +1,8 @@
 use axum::{
-    http::{header, HeaderValue, Method},
+    http::{
+        header::{AUTHORIZATION, CONTENT_TYPE},
+        HeaderValue, Method,
+    },
     middleware::from_fn,
     routing::{get, post},
     Router,
@@ -14,7 +17,7 @@ pub mod controllers;
 pub mod middleware;
 
 use controllers::{
-    c_persons::{get_person, get_persons, login_person, signup_person},
+    c_persons::{get_person, get_persons, login_person, refresh_token, signup_person},
     c_posts::{get_post, get_posts, post_post},
 };
 use middleware::require_authentication;
@@ -67,17 +70,18 @@ async fn init_api() -> Router {
     let cors = CorsLayer::new()
         .allow_origin("http://localhost:9000".parse::<HeaderValue>().unwrap())
         .allow_methods([Method::GET, Method::POST])
-        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]); // <- needed for `content-type: application/json`
+        .allow_headers([AUTHORIZATION, CONTENT_TYPE])
+        .allow_credentials(true);
 
     Router::new()
-        .route("/persons/signup", post(signup_person))
         .route("/persons", get(get_persons))
         .route("/persons/:person_id", get(get_person))
         .route("/posts", post(post_post))
         .route("/posts", get(get_posts))
         .route("/posts/:post_id", get(get_post))
-        // .route_layer(from_extractor::<RequireAuth>())
         .route_layer(from_fn(require_authentication))
+        .route("/persons/signup", post(signup_person))
         .route("/persons/login", post(login_person))
+        .route("/persons/refresh", get(refresh_token))
         .layer(cors)
 }

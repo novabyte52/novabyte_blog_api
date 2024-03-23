@@ -26,6 +26,15 @@ impl NovaDB {
         Self { novadb: db }
     }
 
+    pub async fn query_none_with_args<A: Serialize + Debug>(&self, query: &str, args: A) {
+        let query = self.novadb.query(query).bind(args);
+
+        match query.await {
+            Ok(r) => println!("Query response: {:#?}", r),
+            Err(e) => panic!("Query Error: {}", e),
+        }
+    }
+
     pub async fn query_single<T: DeserializeOwned>(
         &self,
         query: &str,
