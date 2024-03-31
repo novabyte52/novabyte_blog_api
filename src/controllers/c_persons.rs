@@ -20,7 +20,7 @@ use jwt_simple::{
 use nb_lib::{
     models::{
         custom_claims::CustomClaims,
-        person::{LogInCreds, Person, SignUpCreds, SignUpState, TokenResponse},
+        person::{LogInCreds, LoginResponse, Person, RefreshResponse, SignUpCreds, SignUpState},
     },
     services::s_persons,
 };
@@ -56,7 +56,8 @@ pub async fn login_person(jar: CookieJar, Json(creds): Json<LogInCreds>) -> impl
 
     (
         jar,
-        Json(TokenResponse {
+        Json(LoginResponse {
+            person: person.clone(),
             token: generate_token(person),
         }),
     )
@@ -126,23 +127,29 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
     // TODO: if record is fine, generate_token(current_person)
     Ok((
         jar,
-        Json(TokenResponse {
+        Json(RefreshResponse {
             token: generate_token(current_person),
         }),
     ))
 }
 
-pub async fn get_person(person_id: Result<Path<Thing>, PathRejection>) -> impl IntoResponse {
+pub async fn get_person(person_id: Result<Path<String>, PathRejection>) -> impl IntoResponse {
     println!("c: get person");
+    println!("c: {:#?}", &person_id);
 
-    let id = match person_id {
-        Ok(id) => id,
+    let thing_param = match person_id {
+        Ok(p) => p,
         Err(err) => return Err((StatusCode::BAD_REQUEST, err.to_string())),
     };
 
-    println!("c: person id - {:#?}", id);
+    let thing = match thing_from_string(thing_param.0.clone()) {
+        Ok(t) => t,
+        Err(err) => return Err((StatusCode::BAD_REQUEST, err.to_string())),
+    };
 
-    let generated_id = s_persons::get_person(id.0).await;
+    println!("c: person thingParam - {:#?}", thing_param.0);
+
+    let generated_id = s_persons::get_person(thing).await;
     Ok(Json(generated_id))
 }
 

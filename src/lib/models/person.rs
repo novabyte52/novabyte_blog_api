@@ -46,6 +46,12 @@ pub struct InsertPersonArgs {
 }
 
 #[derive(Debug, Serialize)]
-pub struct TokenResponse {
+pub struct LoginResponse {
+    pub person: Person,
+    pub token: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RefreshResponse {
     pub token: String,
 }
