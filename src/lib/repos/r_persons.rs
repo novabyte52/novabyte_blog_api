@@ -63,6 +63,7 @@ impl PersonsRepo {
                         email = $email,
                         username = $username,
                         pass_hash = $pass_hash,
+                        is_admin = false
                         meta = $meta;
                 "#,
                 InsertPersonArgs {

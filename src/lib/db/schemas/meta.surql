@@ -1,7 +1,4 @@
-DEFINE TABLE meta SCHEMAFULL
-    PERMISSIONS
-        FOR create, select FULL
-        FOR update, delete WHERE id = $auth.id;
+DEFINE TABLE meta SCHEMALESS;
 
 DEFINE FIELD created_by ON meta TYPE record<person>;
 DEFINE FIELD created_on ON meta TYPE datetime DEFAULT time::now();

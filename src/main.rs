@@ -51,6 +51,18 @@ async fn main() {
         .await
         .expect("Failed to apply migrations");
 
+    // Remove all migrations
+    // MigrationRunner::new(&db)
+    //     .down("0")
+    //     .await
+    //     .expect("Failed to revert migrations");
+
+    let migrations_applied = MigrationRunner::new(&db)
+        .list()
+        .await
+        .expect("no applied migrations");
+    println!("applied migrations: {:#?}", migrations_applied);
+
     // build our application
     let app = init_api().await;
 
