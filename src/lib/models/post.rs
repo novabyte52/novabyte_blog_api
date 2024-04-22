@@ -1,4 +1,4 @@
-use super::{meta::Meta, person::Person};
+use super::meta::Meta;
 
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
@@ -7,8 +7,22 @@ use surrealdb::sql::Thing;
 pub struct Post {
     pub title: String,
     pub markdown: String,
-    pub author: Person,
+    pub author: Thing,
     pub meta: Meta<()>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PostPostArgs {
+    pub title: String,
+    pub markdown: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreatePostArgs {
+    pub title: String,
+    pub markdown: String,
+    pub author: Thing,
+    pub meta: Thing,
 }
 
 #[derive(Debug, Serialize)]

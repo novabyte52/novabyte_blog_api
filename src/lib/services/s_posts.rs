@@ -1,13 +1,14 @@
+use surrealdb::sql::Thing;
 use ulid::Ulid;
 
-use crate::services::s_persons::get_person;
+use crate::models::post::PostPostArgs;
 use crate::{models::post::Post, repos::r_posts::PostsRepo};
 
-pub async fn create_post(new_post: Post) -> Post {
+pub async fn create_post(new_post: PostPostArgs, author: Thing) {
     println!("s: create post");
     PostsRepo::new()
         .await
-        .insert_post(get_person(new_post.author.id).await.expect(""))
+        .insert_post(new_post.title, new_post.markdown, author)
         .await
 }
 

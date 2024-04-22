@@ -3,12 +3,15 @@ use ulid::Ulid;
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
-use crate::models::person::Person;
-use crate::models::post::{Post, SelectPostArgs};
+use crate::models::meta::InsertMetaArgs;
+use crate::models::post::{CreatePostArgs, Post, SelectPostArgs};
+
+use super::r_meta::MetaRepo;
 
 pub struct PostsRepo {
     reader: NovaDB,
     writer: NovaDB,
+    meta: MetaRepo,
 }
 
 impl PostsRepo {
@@ -31,32 +34,45 @@ impl PostsRepo {
         })
         .await;
 
-        Self { reader, writer }
+        Self {
+            reader,
+            writer,
+            meta: MetaRepo::new().await,
+        }
     }
 
-    pub async fn insert_post(&self, author: Person) -> Post {
+    pub async fn insert_post(&self, title: String, markdown: String, author: Thing) {
         println!("insert post");
-        // Perform a custom advanced query
-        let user = self
-            .writer
-            .query_single_with_args::<Post, Person>(
+        println!("author: {}", author);
+
+        let meta = self
+            .meta
+            .insert_meta(InsertMetaArgs {
+                created_by: author.clone(),
+            })
+            .await;
+
+        let args = CreatePostArgs {
+            title,
+            markdown,
+            author,
+            meta: meta.id,
+        };
+
+        self.writer
+            .query_none_with_args::<CreatePostArgs>(
                 r#"
                     CREATE 
                         post
-                    SET 
-                    author = $person
+                    SET
+                        title = $title,
+                        markdown = $markdown,
+                        author = $author,
+                        meta = $meta;
                 "#,
-                author,
+                args,
             )
             .await;
-
-        match user {
-            Ok(p) => match p {
-                Some(p) => p,
-                None => panic!("no post returned"),
-            },
-            Err(e) => panic!("nothing found!: {:#?}", e),
-        }
     }
 
     pub async fn select_post(&self, post_id: Ulid) -> Post {

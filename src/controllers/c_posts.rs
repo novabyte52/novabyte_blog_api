@@ -1,17 +1,22 @@
-use nb_lib::{models::post::Post, services::s_posts};
+use nb_lib::{
+    models::{person::Person, post::PostPostArgs},
+    services::s_posts,
+};
 
 use axum::{
     extract::{rejection::PathRejection, Path},
     http::StatusCode,
     response::IntoResponse,
-    Json,
+    Extension, Json,
 };
 use ulid::Ulid;
 
-pub async fn post_post(new_post: Json<Post>) -> impl IntoResponse {
+pub async fn post_post(
+    current_person: Extension<Person>,
+    new_post: Json<PostPostArgs>,
+) -> impl IntoResponse {
     println!("c: create post");
-    let foo = s_posts::create_post(new_post.0).await;
-    Json(foo)
+    s_posts::create_post(new_post.0, current_person.id.clone()).await;
 }
 
 pub async fn get_post(post_id: Result<Path<Ulid>, PathRejection>) -> impl IntoResponse {
