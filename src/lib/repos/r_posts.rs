@@ -99,7 +99,7 @@ impl PostsRepo {
 
     pub async fn select_posts(&self) -> Vec<Post> {
         println!("r: select posts");
-        let query = self.reader.query_many("SELECT * FROM person");
+        let query = self.reader.query_many("SELECT * FROM post");
 
         match query.await {
             Ok(p) => p,

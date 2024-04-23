@@ -38,7 +38,5 @@ pub async fn get_posts() -> impl IntoResponse {
 
     let posts = s_posts::get_posts().await;
 
-    println!("c: {:#?}", posts);
-
     Json(posts)
 }
