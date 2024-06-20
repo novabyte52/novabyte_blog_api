@@ -26,6 +26,33 @@ impl NovaDB {
         Self { novadb: db }
     }
 
+    pub async fn begin_tran(&self) {
+        let query = self.novadb.query("BEGIN TRANSACTION;");
+
+        match query.await {
+            Ok(r) => println!("Begin tran response: {:#?}", r),
+            Err(e) => panic!("Error beginning tran: {:#?}", e),
+        }
+    }
+
+    pub async fn commit_tran(&self) {
+        let query = self.novadb.query("COMMIT TRANSACTION;");
+
+        match query.await {
+            Ok(r) => println!("Commit tran response: {:#?}", r),
+            Err(e) => panic!("Error committing tran: {:#?}", e),
+        }
+    }
+
+    pub async fn cancel_tran(&self) {
+        let query = self.novadb.query("CANCEL TRANSACTION;");
+
+        match query.await {
+            Ok(r) => println!("Cancel tran response: {:#?}", r),
+            Err(e) => panic!("Error canceling tran: {:#?}", e),
+        }
+    }
+
     pub async fn query_none_with_args<A: Serialize + Debug>(&self, query: &str, args: A) {
         let query = self.novadb.query(query).bind(args);
 

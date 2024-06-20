@@ -18,7 +18,7 @@ pub mod middleware;
 
 use controllers::{
     c_persons::{get_person, get_persons, login_person, refresh_token, signup_person},
-    c_posts::{get_post, get_posts, post_post},
+    c_posts::{draft_post, publish_post},
 };
 use middleware::require_authentication;
 
@@ -88,10 +88,12 @@ async fn init_api() -> Router {
     Router::new()
         .route("/persons", get(get_persons))
         .route("/persons/:person_id", get(get_person))
-        .route("/posts", post(post_post))
-        .route("/posts", get(get_posts))
-        .route("/posts/:post_id", get(get_post))
+        // .route("/posts", post(post_post))
+        // .route("/posts/:post_id", get(get_post))
+        .route("/posts/draft", post(draft_post))
+        .route("/posts/publish", post(publish_post))
         .route_layer(from_fn(require_authentication))
+        // .route("/posts", get(get_posts))
         .route("/persons/signup", post(signup_person))
         .route("/persons/login", post(login_person))
         .route("/persons/refresh", get(refresh_token))
