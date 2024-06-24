@@ -8,13 +8,15 @@ pub struct Post {
     pub meta: Thing,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PostVersion {
     pub id: Thing,
+    pub draft_id: Thing,
     pub title: String,
     pub markdown: String,
     pub author: Thing,
-    pub meta: Thing,
+    pub published: Option<bool>,
+    pub at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,7 +24,7 @@ pub struct PostContent {
     pub title: String,
     pub markdown: String,
     pub author: Thing,
-    pub on: DateTime<Utc>,
+    pub at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,7 +40,7 @@ pub struct CreatePostArgs {
 
 #[derive(Debug, Serialize)]
 pub struct SelectPostArgs {
-    pub id: Thing,
+    pub post_id: Thing,
 }
 
 // === draft models === //
@@ -49,7 +51,7 @@ pub struct Drafted {
     pub r#in: Thing,
     pub r#out: Thing,
     pub markdown: String,
-    pub on: DateTime<Utc>,
+    pub at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,14 +60,15 @@ pub struct Published {
     pub r#in: Thing,
     pub r#out: Thing,
     pub markdown: String,
-    pub on: DateTime<Utc>,
+    pub at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct DraftPostArgs {
     pub id: Option<Thing>,
     pub title: String,
     pub markdown: String,
+    pub published: bool,
 }
 
 // === author models === //
@@ -74,7 +77,7 @@ pub struct DraftPostArgs {
 pub struct NewAuthored {
     pub r#in: Thing,
     pub r#out: Thing,
-    pub on: DateTime<Utc>,
+    pub at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -82,5 +85,5 @@ pub struct Authored {
     pub id: Thing,
     pub r#in: Thing,
     pub r#out: Thing,
-    pub on: DateTime<Utc>,
+    pub at: DateTime<Utc>,
 }

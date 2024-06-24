@@ -18,7 +18,7 @@ pub mod middleware;
 
 use controllers::{
     c_persons::{get_person, get_persons, login_person, refresh_token, signup_person},
-    c_posts::{draft_post, publish_post},
+    c_posts::{draft_post, get_drafted_posts, get_published_posts, publish_draft},
 };
 use middleware::require_authentication;
 
@@ -86,16 +86,22 @@ async fn init_api() -> Router {
         .allow_credentials(true);
 
     Router::new()
+        // persons routes
         .route("/persons", get(get_persons))
         .route("/persons/:person_id", get(get_person))
-        // .route("/posts", post(post_post))
-        // .route("/posts/:post_id", get(get_post))
-        .route("/posts/draft", post(draft_post))
-        .route("/posts/publish", post(publish_post))
+        // posts routes
+        .route("/posts/drafts", post(draft_post)) // ?publish=bool
+        .route("/posts/drafts/:post_id/publish", post(publish_draft))
+        .route("/posts/drafts", get(get_drafted_posts))
+        // authentication layer (all previous routes require authentication to access)
         .route_layer(from_fn(require_authentication))
-        // .route("/posts", get(get_posts))
+        // all routes after are public and can be accessed by ANYONE
+        // public persons routes
         .route("/persons/signup", post(signup_person))
         .route("/persons/login", post(login_person))
         .route("/persons/refresh", get(refresh_token))
+        // public posts routes
+        .route("/posts/published", get(get_published_posts))
+        // all routes should stay behind the CORS layer
         .layer(cors)
 }

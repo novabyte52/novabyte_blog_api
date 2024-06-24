@@ -5,8 +5,7 @@ use surrealdb::sql::Thing;
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::InsertMetaArgs;
-use crate::models::person::{InsertPersonArgs, Person, SignUpState};
-use crate::models::post::SelectPostArgs;
+use crate::models::person::{InsertPersonArgs, Person, SelectPersonArgs, SignUpState};
 use crate::models::token::{BareToken, InsertTokenArgs, SelectTokenArgs, Token};
 use crate::repos::r_meta::MetaRepo;
 
@@ -84,11 +83,11 @@ impl PersonsRepo {
     }
 
     pub async fn select_person(&self, person_id: Thing) -> Option<Person> {
-        println!("r: select post: {}", person_id);
+        println!("r: select persons: {}", person_id);
 
         let query = self.reader.query_single_with_args(
             "SELECT * FROM person WHERE id = $id",
-            SelectPostArgs { id: person_id },
+            SelectPersonArgs { id: person_id },
         );
 
         match query.await {

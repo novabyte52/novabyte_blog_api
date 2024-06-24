@@ -4,7 +4,9 @@ use surrealdb::sql::Thing;
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::InsertMetaArgs;
-use crate::models::post::{CreatePostArgs, Drafted, Post, PostContent, Published, SelectPostArgs};
+use crate::models::post::{
+    CreatePostArgs, Drafted, Post, PostContent, PostVersion, Published, SelectPostArgs,
+};
 
 use super::r_meta::MetaRepo;
 
@@ -28,6 +30,7 @@ struct DraftedArgs {
     post_id: Thing,
     title: String,
     markdown: String,
+    published: bool,
 }
 
 impl PostsRepo {
@@ -67,8 +70,6 @@ impl PostsRepo {
             })
             .await;
 
-        let args = CreatePostArgs { meta: meta.id };
-
         let query = self.writer.query_single_with_args::<Post, CreatePostArgs>(
             r#"
                     CREATE 
@@ -76,7 +77,7 @@ impl PostsRepo {
                     SET
                         meta = $meta;
                 "#,
-            args,
+            CreatePostArgs { meta: meta.id },
         );
 
         match query.await {
@@ -91,10 +92,9 @@ impl PostsRepo {
     pub async fn select_post(&self, post_id: Thing) -> Post {
         println!("r: select post: {}", post_id);
 
-        let query = self.reader.query_single_with_args(
-            "SELECT * FROM person WHERE id = $id",
-            SelectPostArgs { id: post_id },
-        );
+        let query = self
+            .reader
+            .query_single_with_args("SELECT * FROM $post_id;", SelectPostArgs { post_id });
 
         match query.await {
             Ok(r) => match r {
@@ -115,62 +115,31 @@ impl PostsRepo {
     //     }
     // }
 
-    // pub async fn author_post(&self, person_id: Thing, post_id: Thing) -> bool {
-    //     println!("r: author post");
-    //     let query = self
-    //         .writer
-    //         .query_single_with_args::<bool, ((&str, Thing), (&str, Thing))>(
-    //             "RELATE $personId->authored->$postId",
-    //             (("personId", person_id), ("postId", post_id)),
-    //         );
-
-    //     match query.await {
-    //         Ok(o) => match o {
-    //             Some(p) => p,
-    //             None => panic!("Nothing returned when authoring post..."),
-    //         },
-    //         Err(e) => panic!("error authoring post: {:#?}", e),
-    //     };
-
-    //     return true;
-    // }
-
-    // pub async fn get_post_authors(&self) -> Vec<Authored> {
-    //     println!("r: get post authors");
-    //     let query = self
-    //         .reader
-    //         .query_single("SELECT * FROM post WHERE <-authored;");
-
-    //     match query.await {
-    //         Ok(o) => match o {
-    //             Some(p) => p,
-    //             None => panic!("Nothing returned when getting post authors..."),
-    //         },
-    //         Err(e) => panic!("error getting post authors: {:#?}", e),
-    //     }
-    // }
-
     pub async fn draft_post(
         &self,
         post_id: Thing,
         title: String,
         markdown: String,
         person_id: Thing,
+        published: bool,
     ) -> Drafted {
         println!("r: draft post");
         let query = self.reader.query_single_with_args::<Drafted, DraftedArgs>(
             r#"
                 RELATE $person_id->drafted->$post_id
                     SET
+                        id = drafted:ulid(),
                         title = $title,
                         markdown = $markdown,
-                        on = time::now();
+                        published = $published,
+                        at = time::now();
             "#,
             DraftedArgs {
                 person_id,
                 post_id,
                 title,
                 markdown,
+                published,
             },
         );
 
@@ -179,15 +148,27 @@ impl PostsRepo {
                 Some(p) => p,
                 None => panic!("Nothing returned when drafting post..."),
             },
-            Err(e) => panic!("error selecting drafted posts: {:#?}", e),
+            Err(e) => panic!("error drafting post: {:#?}", e),
         }
     }
 
-    pub async fn select_drafted_posts(&self) -> Vec<Post> {
+    pub async fn select_drafted_posts(&self) -> Vec<PostVersion> {
         println!("r: select drafted posts");
-        let query = self
-            .reader
-            .query_many("SELECT * FROM post WHERE <-drafted;");
+        let query = self.reader.query_many(
+            r#"
+                SELECT
+                    out as id,
+                    id as draft_id,
+                    title,
+                    markdown,
+                    at,
+                    in as author,
+                    published
+                FROM drafted
+                WHERE published = false
+                ORDER BY at DESC;
+            "#,
+        );
 
         match query.await {
             Ok(p) => p,
@@ -195,7 +176,36 @@ impl PostsRepo {
         }
     }
 
-    pub async fn publish_post(
+    pub async fn select_current_draft(&self, post_id: Thing) -> PostVersion {
+        let query = self.reader.query_single_with_args(
+            r#"
+            SELECT
+                out as id,
+                id as draft_id,
+                title,
+                markdown,
+                at,
+                in as author
+            FROM drafted
+            WHERE out = $post_id
+            ORDER BY at DESC
+            LIMIT 1;
+        "#,
+            SelectPostArgs {
+                post_id: post_id.clone(),
+            },
+        );
+
+        match query.await {
+            Ok(o) => match o {
+                Some(p) => p,
+                None => panic!("Current draft version not found for {:#?}", post_id),
+            },
+            Err(e) => panic!("error selecting drafted post version: {:#?}", e),
+        }
+    }
+
+    pub async fn publish_new_draft(
         &self,
         post_id: Thing,
         title: String,
@@ -205,17 +215,19 @@ impl PostsRepo {
         println!("r: publish post");
         let query = self.reader.query_single_with_args(
             r#"
-                RELATE $person_id->published->$post_id
+                RELATE $person_id->drafted:ulid()->$post_id
                     SET
                         title = $title,
                         markdown = $markdown,
-                        on = time::now();
+                        published = true,
+                        at = time::now();
             "#,
             DraftedArgs {
                 person_id,
                 post_id,
                 title,
                 markdown,
+                published: true,
             },
         );
 
@@ -228,15 +240,71 @@ impl PostsRepo {
         }
     }
 
-    pub async fn select_published_posts(&self) -> Vec<Post> {
-        println!("r: select published posts");
+    pub async fn publish_draft(&self, draft_id: Thing) -> Published {
+        println!("r: publish post");
         let query = self
             .reader
-            .query_many("SELECT * FROM post WHERE <-published;");
+            .query_single_with_args("UPDATE $draft_id SET published = true;", draft_id);
+
+        match query.await {
+            Ok(p) => match p {
+                Some(p) => p,
+                None => panic!("Nothing returned when publishing post..."),
+            },
+            Err(e) => panic!("error selecting published posts: {:#?}", e),
+        }
+    }
+
+    pub async fn select_published_posts(&self) -> Vec<PostVersion> {
+        println!("r: select published posts");
+        let query = self.reader.query_many(
+            r#"
+                SELECT
+                    out as id,
+                    id as draft_id,
+                    title,
+                    markdown,
+                    at,
+                    in as author,
+                    published
+                FROM drafted
+                WHERE published = true
+                ORDER BY at DESC;
+            "#,
+        );
 
         match query.await {
             Ok(p) => p,
             Err(e) => panic!("error selecting published posts: {:#?}", e),
+        }
+    }
+
+    pub async fn select_current_published(&self, post_id: Thing) -> Option<PostVersion> {
+        let query = self.reader.query_single_with_args(
+            r#"
+            SELECT
+                out as id,
+                id as draft_id,
+                title,
+                markdown,
+                at,
+                in as author
+            FROM published
+            WHERE out = $post_id
+            ORDER BY at DESC
+            LIMIT 1;
+        "#,
+            SelectPostArgs {
+                post_id: post_id.clone(),
+            },
+        );
+
+        match query.await {
+            Ok(o) => match o {
+                Some(p) => Some(p),
+                None => None,
+            },
+            Err(e) => panic!("error selecting published post version: {:#?}", e),
         }
     }
 
@@ -248,7 +316,7 @@ impl PostsRepo {
                         in as author,
                         title,
                         markdown,
-                        on
+                        at
                     FROM drafted
                     WHERE out = $post_id
                     ORDER BY on DESC
