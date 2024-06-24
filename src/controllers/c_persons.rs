@@ -42,7 +42,6 @@ pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse 
 pub async fn login_person(jar: CookieJar, Json(creds): Json<LogInCreds>) -> impl IntoResponse {
     let person = s_persons::log_in_with_creds(creds).await;
 
-    // TODO: insert token record
     let refresh = s_persons::create_refresh_token(person.id.clone()).await;
     let refresh_token = generate_refresh_token(&refresh.id);
 
@@ -93,7 +92,6 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
     };
 
-    // TODO: need to soft delete the token record at some point
     let token = s_persons::get_token_record(token_id).await;
     s_persons::soft_delete_token_record(token.id).await;
     let current_person = if let Some(person) = s_persons::get_person(token.person.clone()).await {
@@ -105,10 +103,8 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
         ));
     };
 
-    // TODO: check if the record is too old (need to define an amount of time refresh is valid)
     let expiry_duration = Utc::now().checked_sub_days(Days::new(2)).expect("");
 
-    // TODO: if record is too old, reject
     if expiry_duration > token.meta.created_on {
         return Err((StatusCode::UNAUTHORIZED, "Refresh token retired.".into()));
     }
@@ -124,7 +120,6 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
             .same_site(SameSite::None),
     );
 
-    // TODO: if record is fine, generate_token(current_person)
     Ok((
         jar,
         Json(RefreshResponse {

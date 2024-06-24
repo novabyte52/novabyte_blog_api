@@ -74,20 +74,6 @@ pub async fn soft_delete_token_record(token_id: Thing) {
         .await
 }
 
-// pub async fn create_person(new_person: PostPerson) -> Person {
-//     println!("s: create person");
-//     return PersonsRepo::new()
-//         .await
-//         .insert_person(
-//             new_person,
-//             Thing {
-//                 tb: String::from("person"),
-//                 id: "01HJRVBD6MMBJGWJ7BQV3RANQY".into(),
-//             },
-//         )
-//         .await;
-// }
-
 pub async fn get_person(person_id: Thing) -> Option<Person> {
     println!("s: get person");
     PersonsRepo::new().await.select_person(person_id).await

@@ -27,6 +27,16 @@ async fn main() {
     // initialize tracing
     tracing_subscriber::fmt::init();
 
+    connect_to_db().await;
+
+    // build our application
+    let app = init_api().await;
+
+    // run our app
+    serve(app, 52001).await;
+}
+
+async fn connect_to_db() {
     let db = connect("ws:127.0.0.1:52000")
         .await
         .expect("Unable to connect to database. Is it running?");
@@ -51,30 +61,13 @@ async fn main() {
         .await
         .expect("Failed to apply migrations");
 
-    // Remove all migrations
-    // MigrationRunner::new(&db)
-    //     .down("0")
-    //     .await
-    //     .expect("Failed to revert migrations");
+    // TODO: may want to add an endpoint in to rollback migrations at some point
 
     let migrations_applied = MigrationRunner::new(&db)
         .list()
         .await
         .expect("no applied migrations");
     println!("applied migrations: {:#?}", migrations_applied);
-
-    // build our application
-    let app = init_api().await;
-
-    // run our app
-    serve(app, 52001).await;
-}
-
-async fn serve(app: Router, port: u16) {
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = TcpListener::bind(addr).await.unwrap();
-    println!("listening on {}", addr);
-    axum::serve(listener, app).await.unwrap();
 }
 
 async fn init_api() -> Router {
@@ -104,4 +97,11 @@ async fn init_api() -> Router {
         .route("/posts/published", get(get_published_posts))
         // all routes should stay behind the CORS layer
         .layer(cors)
+}
+
+async fn serve(app: Router, port: u16) {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let listener = TcpListener::bind(addr).await.unwrap();
+    println!("listening on {}", addr);
+    axum::serve(listener, app).await.unwrap();
 }

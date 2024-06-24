@@ -63,33 +63,13 @@ pub async fn get_drafted_posts() -> Vec<PostVersion> {
     let unique_draft_ids = all_drafts
         .into_iter()
         .map(|p| p.id)
-        .unique_by(|p| p.clone())
+        .unique_by(|id| id.clone())
         .collect::<Vec<Thing>>();
 
-    let drafts = join_all(unique_draft_ids.clone().into_iter().map(|p| async {
+    join_all(unique_draft_ids.clone().into_iter().map(|p| async {
         return get_current_draft(p).await;
     }))
-    .await;
-
-    let published = join_all(unique_draft_ids.into_iter().map(|p| async {
-        return get_current_published(p).await;
-    }))
-    .await;
-
-    let mut result = vec![];
-    for (i, d) in drafts.into_iter().enumerate() {
-        if let Some(o) = published.get(i) {
-            if let Some(p) = o {
-                if d.clone().at.timestamp() > p.at.timestamp() {
-                    result.push(d.clone());
-                }
-            } else {
-                result.push(d)
-            }
-        }
-    }
-
-    result
+    .await
 }
 
 pub async fn get_current_draft(post_id: Thing) -> PostVersion {
@@ -97,6 +77,8 @@ pub async fn get_current_draft(post_id: Thing) -> PostVersion {
 }
 
 pub async fn publish_new_draft(draft: DraftPostArgs, author: Thing) -> bool {
+    // TODO: make sure there are no other published drafts
+    // for this post before publishing this one
     let repo = PostsRepo::new().await;
 
     repo.writer.begin_tran().await;
@@ -120,6 +102,8 @@ pub async fn publish_new_draft(draft: DraftPostArgs, author: Thing) -> bool {
 }
 
 pub async fn publish_draft(draft_id: Thing) -> bool {
+    // TODO: make sure there are no other published drafts
+    // for this post before publishing this one
     PostsRepo::new().await.publish_draft(draft_id).await;
     true
 }
@@ -127,33 +111,4 @@ pub async fn publish_draft(draft_id: Thing) -> bool {
 /// Gets all current published versions of any post that is published (visible)
 pub async fn get_published_posts() -> Vec<PostVersion> {
     PostsRepo::new().await.select_published_posts().await
-
-    // let unique_draft_ids = all_published
-    //     .into_iter()
-    //     .map(|p| p.id)
-    //     .unique_by(|p| p.clone())
-    //     .collect::<Vec<Thing>>();
-
-    // let current_published = join_all(unique_draft_ids.into_iter().map(|p| async {
-    //     return get_current_published(p).await;
-    // }))
-    // .await;
-
-    // let mut result = vec![];
-    // current_published.into_iter().for_each(|o| {
-    //     if let Some(p) = o {
-    //         result.push(p)
-    //     }
-    // });
-
-    // result
-}
-
-// TODO: get_live_published_posts
-
-pub async fn get_current_published(post_id: Thing) -> Option<PostVersion> {
-    PostsRepo::new()
-        .await
-        .select_current_published(post_id)
-        .await
 }

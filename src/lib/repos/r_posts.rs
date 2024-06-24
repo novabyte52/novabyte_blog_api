@@ -4,9 +4,7 @@ use surrealdb::sql::Thing;
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::InsertMetaArgs;
-use crate::models::post::{
-    CreatePostArgs, Drafted, Post, PostContent, PostVersion, Published, SelectPostArgs,
-};
+use crate::models::post::{CreatePostArgs, Drafted, Post, PostVersion, Published, SelectPostArgs};
 
 use super::r_meta::MetaRepo;
 
@@ -105,16 +103,6 @@ impl PostsRepo {
         }
     }
 
-    // pub async fn select_posts(&self) -> Vec<Post> {
-    //     println!("r: select posts");
-    //     let query = self.reader.query_many("SELECT * FROM post");
-
-    //     match query.await {
-    //         Ok(p) => p,
-    //         Err(e) => panic!("error selecting posts: {:#?}", e),
-    //     }
-    // }
-
     pub async fn draft_post(
         &self,
         post_id: Thing,
@@ -185,9 +173,11 @@ impl PostsRepo {
                 title,
                 markdown,
                 at,
-                in as author
+                in as author,
+                published
             FROM drafted
             WHERE out = $post_id
+                AND published = false
             ORDER BY at DESC
             LIMIT 1;
         "#,
@@ -275,61 +265,6 @@ impl PostsRepo {
 
         match query.await {
             Ok(p) => p,
-            Err(e) => panic!("error selecting published posts: {:#?}", e),
-        }
-    }
-
-    pub async fn select_current_published(&self, post_id: Thing) -> Option<PostVersion> {
-        let query = self.reader.query_single_with_args(
-            r#"
-            SELECT
-                out as id,
-                id as draft_id,
-                title,
-                markdown,
-                at,
-                in as author
-            FROM published
-            WHERE out = $post_id
-            ORDER BY at DESC
-            LIMIT 1;
-        "#,
-            SelectPostArgs {
-                post_id: post_id.clone(),
-            },
-        );
-
-        match query.await {
-            Ok(o) => match o {
-                Some(p) => Some(p),
-                None => None,
-            },
-            Err(e) => panic!("error selecting published post version: {:#?}", e),
-        }
-    }
-
-    pub async fn get_current_content(&self, post_id: Thing) -> PostContent {
-        println!("r: select post content");
-        let query = self.reader.query_single::<PostContent>(
-            r#"
-                    SELECT
-                        in as author,
-                        title,
-                        markdown,
-                        at
-                    FROM drafted
-                    WHERE out = $post_id
-                    ORDER BY on DESC
-                    LIMIT 1
-                    FETCH in;
-                "#,
-        );
-
-        match query.await {
-            Ok(o) => match o {
-                Some(p) => p,
-                None => panic!("no post content found for given id {:#?}", post_id),
-            },
             Err(e) => panic!("error selecting published posts: {:#?}", e),
         }
     }

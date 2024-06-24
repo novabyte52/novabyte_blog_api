@@ -14,8 +14,6 @@ use jwt_simple::{
 use nb_lib::{models::custom_claims::CustomClaims, services::s_persons::get_person};
 use surrealdb::sql::{Id, Thing};
 
-pub mod persons_middleware;
-
 pub async fn require_authentication(
     mut req: Request,
     next: Next,

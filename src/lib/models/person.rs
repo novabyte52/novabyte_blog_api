@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
 
+// TODO: should either split out these models and make sure i remove an unneeded ones
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Person {
     pub id: Thing,
