@@ -6,8 +6,9 @@ use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::InsertMetaArgs;
 use crate::models::person::{InsertPersonArgs, Person, SelectPersonArgs, SignUpState};
-use crate::models::token::{BareToken, InsertTokenArgs, SelectTokenArgs, Token};
+use crate::models::token::{InsertTokenArgs, Token, TokenRecord};
 use crate::repos::r_meta::MetaRepo;
+use crate::utils::thing_from_string;
 
 pub struct PersonsRepo {
     reader: NovaDB,
@@ -42,7 +43,7 @@ impl PersonsRepo {
         }
     }
 
-    pub async fn insert_person(&self, new_person: SignUpState, created_by: Thing) -> Person {
+    pub async fn insert_person(&self, new_person: SignUpState, created_by: String) -> Person {
         println!("r: insert person - {:#?}", created_by);
 
         let pass_hash = match new_person.pass_hash {
@@ -62,54 +63,48 @@ impl PersonsRepo {
                         email = $email,
                         username = $username,
                         pass_hash = $pass_hash,
-                        is_admin = false
+                        is_admin = false,
                         meta = $meta;
                 "#,
                 InsertPersonArgs {
                     email: new_person.email,
                     username: new_person.username,
                     pass_hash,
-                    meta: meta.id,
+                    meta: thing_from_string(&meta.id),
                 },
             );
 
         match create_user.await {
-            Ok(p) => match p {
-                Some(p) => p,
-                None => panic!("No person returned, potential issue creating person"),
-            },
-            Err(e) => panic!("Error creating user!: {}", e),
+            Some(p) => p,
+            None => panic!("No person returned, potential issue creating person"),
         }
     }
 
-    pub async fn select_person(&self, person_id: Thing) -> Option<Person> {
+    pub async fn select_person(&self, person_id: String) -> Option<Person> {
         println!("r: select persons: {}", person_id);
 
-        let query = self.reader.query_single_with_args(
-            "SELECT * FROM person WHERE id = $id",
-            SelectPersonArgs { id: person_id },
-        );
-
-        match query.await {
-            Ok(r) => r,
-            Err(e) => panic!("Nothing found! {}", e),
-        }
+        self.reader.query_single_with_args(
+            "SELECT fn::string_id(id) as id, *, fn::string_id(meta) as meta FROM person WHERE id = $id",
+            SelectPersonArgs { id: thing_from_string(&person_id) },
+        ).await
     }
 
     pub async fn select_person_by_email(&self, email: String) -> Option<Person> {
-        println!("r: select person by email");
+        println!("r: select person by email | {:#?}", &email);
 
-        let query = self
-            .reader
+        self.reader
             .query_single_with_args::<Person, (String, String)>(
-                "SELECT * FROM person WHERE email = $email",
+                r#"
+                    SELECT
+                        fn::string_id(id) as id,
+                        username,
+                        email,
+                        is_admin,
+                        fn::string_id(meta) as meta
+                    FROM person WHERE email = $email"#,
                 (String::from("email"), email),
-            );
-
-        match query.await {
-            Ok(p) => p,
-            Err(e) => panic!("Error selecting persons: {}", e),
-        }
+            )
+            .await
     }
 
     pub async fn select_person_hash_by_email(&self, email: String) -> String {
@@ -123,21 +118,20 @@ impl PersonsRepo {
             );
 
         match query.await {
-            Ok(r) => match r {
-                Some(h) => match h.get("pass_hash") {
-                    Some(h) => h.to_string(),
-                    None => panic!("No person hash found in map"),
-                },
-                None => panic!("No person hash record found"),
+            Some(h) => match h.get("pass_hash") {
+                Some(h) => h.to_string(),
+                None => panic!("No person hash found in map"),
             },
-            Err(e) => panic!("Error selecting persons: {}", e),
+            None => panic!("No person hash record found"),
         }
     }
 
     pub async fn select_persons(&self) -> Vec<Person> {
         println!("r: select posts");
 
-        let query = self.reader.query_many("SELECT * FROM person");
+        let query = self.reader.query_many(
+            "SELECT fn::string_id(id) as id, *, fn::string_id(meta) as meta FROM person",
+        );
 
         match query.await {
             Ok(p) => p,
@@ -145,28 +139,53 @@ impl PersonsRepo {
         }
     }
 
-    pub async fn select_token_record(&self, token_id: Thing) -> Token {
+    /*
+    TODO: since converting to having all Things be Strings i can't
+    just use the FETCH clause anymore.. which kinda sucks but oh well.
+    - i could try string formatting and create a string i can insert
+      that adds all the meta fields i want. i would have to update
+      all the models to have the meta fields on them, though.
+    - i could just fetch the meta object separately and then assign
+      it to the objects Meta property..
+    */
+    pub async fn select_token_record(&self, token_id: String) -> Token {
         println!("token_id: {:#?}", token_id);
 
-        let query = self
-            .reader
-            .query_single_with_args::<Token, SelectTokenArgs>(
-                "SELECT * FROM nb_token WHERE id = $id FETCH meta;",
-                SelectTokenArgs {
-                    id: token_id.clone(),
-                },
-            );
+        let token_query = format!(
+            r#"
+                SELECT
+                    fn::string_id(id) as id,
+                    fn::string_id(person) as person,
+                    {}
+                FROM nb_token
+                WHERE id = $id;
+            "#,
+            self.meta.select_meta_string.clone()
+        );
+
+        let query = self.reader.query_single_with_args::<Token, (&str, Thing)>(
+            token_query.as_str(),
+            ("id", thing_from_string(&token_id)),
+        );
 
         match query.await {
-            Ok(r) => match r {
-                Some(t) => t,
-                None => panic!("No token found for token_id: {}", token_id),
-            },
-            Err(e) => panic!("Error selecting token: {}", e),
+            Some(t) => t,
+            None => panic!("No token found for token_id: {}", token_id),
         }
     }
 
-    pub async fn insert_token_record(&self, person_id: Thing) -> Token {
+    /// TODO: things like the below sort of confuse me...
+    /// creating a token takes multiple queries and then getting the proper
+    /// return takes some more. I think some of this can be pulled into the
+    /// service... but what?
+    ///
+    /// maybe a service function called get_token_record which will handle
+    /// building the token record out of the various parts.
+    ///
+    /// should also maybe integrate transactions to any create queries that
+    /// also create meta objects. if the record isn't made, the meta associated
+    /// with it should also not be made.
+    pub async fn insert_token_record(&self, person_id: String) -> TokenRecord {
         let meta = self
             .meta
             .insert_meta(InsertMetaArgs {
@@ -176,47 +195,53 @@ impl PersonsRepo {
 
         let query = self
             .reader
-            .query_single_with_args::<BareToken, InsertTokenArgs>(
+            .query_single_with_args_specify_result::<Thing, InsertTokenArgs>(
                 r#"
-                    CREATE 
-                        nb_token:ulid()
+                    LET $token_id = nb_token:ulid();
+                    CREATE
+                        $token_id
                     SET 
                         person = $person,
                         meta = $meta;
+                    
+                    RETURN $token_id;
                 "#,
                 InsertTokenArgs {
-                    person: person_id,
-                    meta: meta.id,
+                    person: thing_from_string(&person_id),
+                    meta: thing_from_string(&meta.id),
                 },
+                2,
             );
 
-        let bare_token = match query.await {
-            Ok(r) => match r {
-                Some(t) => t,
-                None => panic!("Unable to insert token."),
-            },
-            Err(e) => panic!("Error inserting token: {}", e),
+        let token_thing = match query.await {
+            Some(t) => t,
+            None => panic!("Unable to get Thing of new token"),
         };
 
-        let meta = match self.meta.select_meta(bare_token.meta).await {
+        let token = self.select_token_record(token_thing.to_string()).await;
+
+        let meta = match self.meta.select_meta(&token.meta.id).await {
             Some(m) => m,
             None => panic!("Meta not found!"),
         };
 
-        Token {
-            id: bare_token.id,
-            person: bare_token.person,
-            meta,
+        TokenRecord {
+            id: token.id.to_string(),
+            person: token.person.to_string(),
+            created_by: thing_from_string(&meta.created_by),
+            created_on: meta.created_on,
+            deleted_on: meta.deleted_on,
+            meta: thing_from_string(&meta.id),
         }
     }
 
-    pub async fn soft_delete_token_record(&self, token_id: &Thing) {
-        let query = self.reader.query_none_with_args::<(String, &Thing)>(
+    pub async fn soft_delete_token_record(&self, token_id: &String) {
+        let query = self.reader.query_none_with_args(
             r#"
                 LET $meta_id = (SELECT meta FROM nb_token WHERE id = $token_id);
                 UPDATE $meta_id.meta SET deleted_on = time::now();
             "#,
-            ("token_id".into(), &token_id),
+            ("token_id", thing_from_string(token_id)),
         );
 
         query.await

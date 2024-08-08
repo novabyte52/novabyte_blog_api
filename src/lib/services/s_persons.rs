@@ -2,13 +2,12 @@ use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
-use surrealdb::sql::Thing;
 
 use crate::{
     constants::Constants,
     models::{
         person::{LogInCreds, Person, SignUpState},
-        token::Token,
+        token::{Token, TokenRecord},
     },
     repos::r_persons::PersonsRepo,
 };
@@ -26,7 +25,7 @@ pub async fn sign_up(mut sign_up_state: SignUpState) -> Person {
 
     PersonsRepo::new()
         .await
-        .insert_person(sign_up_state, Constants::system_thing().clone())
+        .insert_person(sign_up_state, Constants::system_thing())
         .await
 }
 
@@ -56,25 +55,25 @@ pub async fn log_in_with_creds(creds: LogInCreds) -> Person {
     }
 }
 
-pub async fn create_refresh_token(person_id: Thing) -> Token {
+pub async fn create_refresh_token(person_id: String) -> TokenRecord {
     PersonsRepo::new()
         .await
         .insert_token_record(person_id)
         .await
 }
 
-pub async fn get_token_record(token_id: Thing) -> Token {
+pub async fn get_token_record(token_id: String) -> Token {
     PersonsRepo::new().await.select_token_record(token_id).await
 }
 
-pub async fn soft_delete_token_record(token_id: Thing) {
+pub async fn soft_delete_token_record(token_id: String) {
     PersonsRepo::new()
         .await
         .soft_delete_token_record(&token_id)
         .await
 }
 
-pub async fn get_person(person_id: Thing) -> Option<Person> {
+pub async fn get_person(person_id: String) -> Option<Person> {
     println!("s: get person");
     PersonsRepo::new().await.select_person(person_id).await
 }

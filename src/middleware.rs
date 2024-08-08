@@ -12,7 +12,6 @@ use jwt_simple::{
     claims::JWTClaims,
 };
 use nb_lib::{models::custom_claims::CustomClaims, services::s_persons::get_person};
-use surrealdb::sql::{Id, Thing};
 
 pub async fn require_authentication(
     mut req: Request,
@@ -51,13 +50,7 @@ pub async fn require_authentication(
         None => panic!("Unable to find subject claim"),
     };
 
-    let person_id = match thing_from_string(sub) {
-        Ok(t) => t,
-        Err(e) => {
-            println!("{}", e);
-            return Err((StatusCode::BAD_REQUEST, "Unable to verify ID.".into()));
-        }
-    };
+    let person_id = sub;
 
     if let Some(current_person) = get_person(person_id).await {
         // insert the current user into a request extension so the handler can
@@ -87,12 +80,4 @@ fn verify_token(token: &String) -> Result<JWTClaims<CustomClaims>, jwt_simple::E
     let key = HS256Key::from_bytes(secret.as_bytes());
 
     key.verify_token::<CustomClaims>(&token, None)
-}
-
-pub fn thing_from_string(sub: String) -> Result<Thing, String> {
-    let thing_parts: Vec<&str> = sub.split(":").collect();
-    Ok(Thing {
-        id: Id::from(thing_parts[1]),
-        tb: String::from(thing_parts[0]),
-    })
 }

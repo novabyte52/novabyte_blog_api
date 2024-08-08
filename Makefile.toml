@@ -1,5 +1,8 @@
 env_files = ["../nb_secrets.env"]
 
+[tasks.update-surreal]
+command = "update-surreal"
+
 [tasks.start-db]
 command = "surreal"
 args = [
@@ -10,8 +13,24 @@ args = [
     "--bind",
     "127.0.0.1:52000",
     "file:/home/novabyte/novabyte_blog.db",
+    # "file://../dbs/novabyte.blog.db",
 ]
-# args = ["start", "--log", "trace", "--auth", "--bind", "127.0.0.1:52000", "file:/home/evan/novabyte_blog/"]
+
+[tasks.init-db]
+command = "surreal"
+args = [
+    "start",
+    "--log",
+    "trace",
+    "--user",
+    "root",
+    "--pass",
+    "root",
+    "--bind",
+    "127.0.0.1:52000",
+    # "file:/home/novabyte/novabyte_blog.db",
+    "file://../dbs/novabyte.blog.db",
+]
 
 [tasks.format]
 install_crate = "rustfmt"
@@ -28,7 +47,15 @@ args = ["build"]
 
 [tasks.run]
 command = "cargo"
-args = ["run", "NOVA_SECRET=${NOVA_SECRET}"]
+args = [
+    "run",
+    "NOVA_SECRET=${NOVA_SECRET}",
+    "JWT_DURATION_MINUTES=${JWT_DURATION_MINUTES}",
+    "REFRESH_DURATION_DAYS=${REFRESH_DURATION_DAYS}",
+]
 
 [tasks.refresh]
 dependencies = ["format", "run"]
+
+[tasks.init-then-start]
+dependencies = ["init-db", "start-db"]

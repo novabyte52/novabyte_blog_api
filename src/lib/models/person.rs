@@ -5,11 +5,11 @@ use surrealdb::sql::Thing;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Person {
-    pub id: Thing,
+    pub id: String,
     pub username: String,
     pub email: String,
     pub is_admin: bool,
-    pub meta: Thing,
+    pub meta: String,
 }
 
 #[derive(Debug, Deserialize)]

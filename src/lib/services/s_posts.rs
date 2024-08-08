@@ -1,22 +1,31 @@
 use futures::future::join_all;
 use itertools::Itertools;
-use surrealdb::sql::Thing;
 
-use crate::models::post::{DraftPostArgs, PostVersion};
+use crate::models::post::{DraftPostArgs, PostHydrated, PostVersion};
 use crate::{models::post::Post, repos::r_posts::PostsRepo};
 
-async fn create_post(created_by: Thing) -> Post {
+async fn create_post(created_by: String) -> Post {
     println!("s: create post");
     PostsRepo::new().await.insert_post(created_by).await
 }
 
-pub async fn get_post(post_id: Thing) -> Post {
+pub async fn get_post(post_id: String) -> Post {
     println!("s: get post");
 
     PostsRepo::new().await.select_post(post_id).await
 }
 
-pub async fn draft_post(draft: DraftPostArgs, author: Thing) -> bool {
+pub async fn get_posts() -> Vec<PostHydrated> {
+    println!("s: get posts");
+    PostsRepo::new().await.select_posts().await
+}
+
+pub async fn get_post_drafts(post_id: String) -> Vec<PostVersion> {
+    println!("s: get post drafts");
+    PostsRepo::new().await.select_post_drafts(post_id).await
+}
+
+pub async fn draft_post(draft: DraftPostArgs, author: String) -> bool {
     println!("s: draft post {:#?}", draft.clone());
     let repo = PostsRepo::new().await;
 
@@ -30,7 +39,7 @@ pub async fn draft_post(draft: DraftPostArgs, author: Thing) -> bool {
         let post = get_post(post_id).await;
 
         repo.draft_post(
-            post.id as Thing,
+            post.id as String,
             draft.title,
             draft.markdown,
             author.clone(),
@@ -64,7 +73,7 @@ pub async fn get_drafted_posts() -> Vec<PostVersion> {
         .into_iter()
         .map(|p| p.id)
         .unique_by(|id| id.clone())
-        .collect::<Vec<Thing>>();
+        .collect::<Vec<String>>();
 
     join_all(unique_draft_ids.clone().into_iter().map(|p| async {
         return get_current_draft(p).await;
@@ -72,11 +81,11 @@ pub async fn get_drafted_posts() -> Vec<PostVersion> {
     .await
 }
 
-pub async fn get_current_draft(post_id: Thing) -> PostVersion {
+pub async fn get_current_draft(post_id: String) -> PostVersion {
     PostsRepo::new().await.select_current_draft(post_id).await
 }
 
-pub async fn publish_new_draft(draft: DraftPostArgs, author: Thing) -> bool {
+pub async fn publish_new_draft(draft: DraftPostArgs, author: String) -> bool {
     // TODO: make sure there are no other published drafts
     // for this post before publishing this one
     let repo = PostsRepo::new().await;
@@ -86,7 +95,7 @@ pub async fn publish_new_draft(draft: DraftPostArgs, author: Thing) -> bool {
     if let Some(post_id) = draft.id {
         let post = get_post(post_id).await;
 
-        repo.publish_new_draft(post.id as Thing, draft.title, draft.markdown, author)
+        repo.publish_new_draft(post.id, draft.title, draft.markdown, author)
             .await;
         repo.writer.commit_tran().await;
         return true;
@@ -101,14 +110,27 @@ pub async fn publish_new_draft(draft: DraftPostArgs, author: Thing) -> bool {
     return true;
 }
 
-pub async fn publish_draft(draft_id: Thing) -> bool {
-    // TODO: make sure there are no other published drafts
-    // for this post before publishing this one
-    PostsRepo::new().await.publish_draft(draft_id).await;
-    true
+pub async fn publish_draft(draft_id: String) -> bool {
+    let repo = PostsRepo::new().await;
+
+    // TODO: get post_id using draft_id
+    let post_id = repo.select_post_id_for_draft_id(&draft_id).await;
+
+    if repo.unpublish_drafts_for_post_id(post_id).await {
+        repo.publish_draft(draft_id).await;
+        return true;
+    }
+
+    false
 }
 
 /// Gets all current published versions of any post that is published (visible)
 pub async fn get_published_posts() -> Vec<PostVersion> {
     PostsRepo::new().await.select_published_posts().await
+}
+
+pub async fn unpublish_post(draft_id: String) -> bool {
+    println!("s: unpublish post");
+    PostsRepo::new().await.unpublish_draft(draft_id).await;
+    true
 }

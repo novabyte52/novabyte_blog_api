@@ -1,6 +1,5 @@
 use std::{env, time::Duration};
 
-use crate::middleware::thing_from_string;
 use axum::{
     extract::{rejection::PathRejection, Path},
     http::StatusCode,
@@ -24,7 +23,6 @@ use nb_lib::{
     },
     services::s_persons,
 };
-use surrealdb::sql::Thing;
 use time::OffsetDateTime;
 
 pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse {
@@ -87,10 +85,7 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
         None => panic!("Unable to find subject claim"),
     };
 
-    let token_id = match thing_from_string(sub) {
-        Ok(id) => id,
-        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
-    };
+    let token_id = sub;
 
     let token = s_persons::get_token_record(token_id).await;
     s_persons::soft_delete_token_record(token.id).await;
@@ -137,10 +132,7 @@ pub async fn get_person(person_id: Result<Path<String>, PathRejection>) -> impl 
         Err(err) => return Err((StatusCode::BAD_REQUEST, err.to_string())),
     };
 
-    let thing = match thing_from_string(thing_param.0.clone()) {
-        Ok(t) => t,
-        Err(err) => return Err((StatusCode::BAD_REQUEST, err.to_string())),
-    };
+    let thing = thing_param.0.clone();
 
     println!("c: person thingParam - {:#?}", thing_param.0);
 
@@ -158,13 +150,18 @@ pub async fn get_persons() -> impl IntoResponse {
 
 fn generate_token(person: Person) -> String {
     let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
+    let jwt_duration = env::var("JWT_DURATION_MINUTES").expect("cannot find JWT_DURATION_MINUTES");
 
     let key = HS256Key::from_bytes(secret.as_bytes());
 
+    // TODO: need to only set is_admin to true if i'm the person
     let custom_claims = CustomClaims { is_admin: true };
 
-    let claims = Claims::with_custom_claims(custom_claims, JwtDuration::from_mins(1)) //JwtDuration::from_hours(1)
-        .with_subject(person.id);
+    let claims = Claims::with_custom_claims(
+        custom_claims,
+        JwtDuration::from_mins(jwt_duration.parse::<u64>().unwrap()),
+    ) //JwtDuration::from_hours(1)
+    .with_subject(person.id);
 
     match key.authenticate(claims) {
         Ok(t) => t,
@@ -172,12 +169,17 @@ fn generate_token(person: Person) -> String {
     }
 }
 
-fn generate_refresh_token(refresh_id: &Thing) -> String {
+// TODO: need to invalidate any other refresh tokens associated with this person
+fn generate_refresh_token(refresh_id: &String) -> String {
     let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
+    let refresh_duration = env::var("REFRESH_DURATION_DAYS").expect("cannot find NOVA_SECRET");
 
     let key = HS256Key::from_bytes(secret.as_bytes());
 
-    let claims = Claims::create(JwtDuration::from_hours(24)).with_subject(refresh_id);
+    let claims = Claims::create(JwtDuration::from_hours(
+        refresh_duration.parse::<u64>().unwrap(),
+    ))
+    .with_subject(refresh_id);
 
     match key.authenticate(claims) {
         Ok(t) => t,

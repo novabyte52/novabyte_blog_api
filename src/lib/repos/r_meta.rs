@@ -3,10 +3,12 @@ use surrealdb::sql::Thing;
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::{InsertMetaArgs, Meta};
+use crate::utils::thing_from_string;
 
 pub struct MetaRepo {
     reader: NovaDB,
     writer: NovaDB,
+    pub select_meta_string: String,
 }
 
 impl MetaRepo {
@@ -29,48 +31,73 @@ impl MetaRepo {
         })
         .await;
 
-        Self { reader, writer }
+        Self {
+            reader,
+            writer,
+            select_meta_string: r#"
+                # potential meta selection string
+                meta,
+                (
+                    SELECT
+                        fn::string_id(id) as id,
+                        fn::string_id(created_by) as created_by,
+                        *
+                    FROM ONLY meta
+                    WHERE id = $parent.meta
+                    LIMIT 1
+                ) as meta
+            "#
+            .to_string(),
+        }
     }
+
+    // TODO: create some helper functions for easy updating of meta info
+    // - i.e. set_updated_at, set_updated_by, set_deleted_on, etc.
+    // will probably create a meta service to transfer them to eventually
 
     pub async fn insert_meta(&self, new_meta: InsertMetaArgs) -> Meta<()> {
         println!("r: insert meta - {:#?}", new_meta);
 
-        let create_meta = self
+        let created_by = thing_from_string(&new_meta.created_by);
+
+        let query = self
             .writer
-            .query_single_with_args::<Meta<()>, InsertMetaArgs>(
+            .query_single_with_args_specify_result::<Meta<()>, (&str, Thing)>(
                 r#"
+                    LET $ulid_id = meta:ulid();
+
                     CREATE
-                        meta:ulid()
+                        $ulid_id
                     SET
-                        created_by = $created_by
+                        created_by = $created_by;
+                    
+                    SELECT
+                        fn::string_id(id) as id,
+                        fn::string_id(created_by) as created_by,
+                        *
+                    FROM meta
+                    WHERE id = $ulid_id;
                 "#,
-                new_meta,
+                ("created_by", created_by),
+                2,
             );
 
-        let response = match create_meta.await {
-            Ok(m) => m,
-            Err(e) => panic!("Meta creation failed: {:#?}", e),
-        };
-
-        match response {
+        match query.await {
             Some(m) => m,
             None => panic!("No meta returned, potential issue creating meta for person"),
         }
     }
 
-    pub async fn select_meta(&self, meta_id: Thing) -> Option<Meta<()>> {
+    pub async fn select_meta(&self, meta_id: &String) -> Option<Meta<()>> {
         println!("r: select meta: {}", meta_id);
 
-        let query = self
-            .reader
-            .query_single_with_args::<Meta<()>, (String, Thing)>(
-                "SELECT * FROM meta WHERE id = $id",
-                ("id".into(), meta_id),
-            );
+        let meta_thing = thing_from_string(meta_id);
 
-        match query.await {
-            Ok(r) => r,
-            Err(e) => panic!("Meta object not found: {:#?}", e),
-        }
+        self.reader
+            .query_single_with_args::<Meta<()>, (&str, Thing)>(
+                "SELECT fn::string_id(id) as id, fn::string_id(created_by) as created_by, * FROM meta WHERE id = $id",
+                ("id", meta_thing),
+            )
+            .await
     }
 }

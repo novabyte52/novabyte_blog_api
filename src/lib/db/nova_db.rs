@@ -2,9 +2,12 @@ use super::SurrealDBConnection;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fmt::Debug;
+use std::usize;
 use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::{opt::auth::Root, Surreal};
+use tracing::{event, instrument, Level};
 
+#[derive(Debug)]
 pub struct NovaDB {
     pub novadb: Surreal<Client>,
 }
@@ -79,21 +82,51 @@ impl NovaDB {
         }
     }
 
+    #[instrument]
     pub async fn query_single_with_args<T: DeserializeOwned, A: Serialize + Debug>(
         &self,
         query: &str,
         args: A,
-    ) -> Result<Option<T>, surrealdb::Error> {
+    ) -> Option<T> {
         let query = self.novadb.query(query).bind(args);
+
+        event!(Level::INFO, "built query: {query:#?}", query = &query);
+
+        let mut response = match query.await {
+            Ok(r) => r,
+            Err(e) => panic!("DB Query Error: {:#?}", e),
+        };
+
+        match response.take(0) {
+            Ok(p) => p,
+            Err(e) => panic!("DB Response error: {:#?}", e),
+        }
+    }
+
+    #[instrument]
+    pub async fn query_single_with_args_specify_result<
+        T: DeserializeOwned,
+        A: Serialize + Debug,
+    >(
+        &self,
+        query: &str,
+        args: A,
+        result_idx: i8,
+    ) -> Option<T> {
+        let query = self.novadb.query(query).bind(args);
+
+        event!(Level::INFO, "built query: {query:#?}", query = &query);
 
         let mut response = match query.await {
             Ok(r) => r,
             Err(e) => panic!("Query Error: {:#?}", e),
         };
 
-        match response.take(0) {
-            Ok(p) => Ok(p),
-            Err(e) => Err(e),
+        println!("Response: {:#?}", &response);
+
+        match response.take::<Option<T>>(result_idx as usize) {
+            Ok(o) => o,
+            Err(e) => panic!("DB Response error: {:#?}", e),
         }
     }
 
