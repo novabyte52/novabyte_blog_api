@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use surrealdb::sql::Thing;
+use tracing::error;
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
@@ -12,7 +13,7 @@ use crate::utils::thing_from_string;
 
 pub struct PersonsRepo {
     reader: NovaDB,
-    writer: NovaDB,
+    _writer: NovaDB,
     meta: MetaRepo,
 }
 
@@ -38,12 +39,17 @@ impl PersonsRepo {
 
         Self {
             reader,
-            writer,
+            _writer: writer,
             meta: MetaRepo::new().await,
         }
     }
 
-    pub async fn insert_person(&self, new_person: SignUpState, created_by: String) -> Person {
+    pub async fn insert_person(
+        &self,
+        new_person: SignUpState,
+        created_by: String,
+        tran_conn: &NovaDB,
+    ) -> Person {
         println!("r: insert person - {:#?}", created_by);
 
         let pass_hash = match new_person.pass_hash {
@@ -51,12 +57,13 @@ impl PersonsRepo {
             None => panic!("Can't create user without the password hash!"),
         };
 
-        let meta = self.meta.insert_meta(InsertMetaArgs { created_by }).await;
+        let meta = self
+            .meta
+            .insert_meta(InsertMetaArgs { created_by }, Some(tran_conn))
+            .await;
 
-        let create_user = self
-            .writer
-            .query_single_with_args::<Person, InsertPersonArgs>(
-                r#"
+        let create_user = tran_conn.query_single_with_args::<Person, InsertPersonArgs>(
+            r#"
                     CREATE 
                         person:ulid()
                     SET 
@@ -66,13 +73,13 @@ impl PersonsRepo {
                         is_admin = false,
                         meta = $meta;
                 "#,
-                InsertPersonArgs {
-                    email: new_person.email,
-                    username: new_person.username,
-                    pass_hash,
-                    meta: thing_from_string(&meta.id),
-                },
-            );
+            InsertPersonArgs {
+                email: new_person.email,
+                username: new_person.username,
+                pass_hash,
+                meta: thing_from_string(&meta.id),
+            },
+        );
 
         match create_user.await {
             Some(p) => p,
@@ -139,15 +146,6 @@ impl PersonsRepo {
         }
     }
 
-    /*
-    TODO: since converting to having all Things be Strings i can't
-    just use the FETCH clause anymore.. which kinda sucks but oh well.
-    - i could try string formatting and create a string i can insert
-      that adds all the meta fields i want. i would have to update
-      all the models to have the meta fields on them, though.
-    - i could just fetch the meta object separately and then assign
-      it to the objects Meta property..
-    */
     pub async fn select_token_record(&self, token_id: String) -> Token {
         println!("token_id: {:#?}", token_id);
 
@@ -174,29 +172,28 @@ impl PersonsRepo {
         }
     }
 
-    /// TODO: things like the below sort of confuse me...
-    /// creating a token takes multiple queries and then getting the proper
-    /// return takes some more. I think some of this can be pulled into the
-    /// service... but what?
-    ///
-    /// maybe a service function called get_token_record which will handle
-    /// building the token record out of the various parts.
-    ///
-    /// should also maybe integrate transactions to any create queries that
-    /// also create meta objects. if the record isn't made, the meta associated
-    /// with it should also not be made.
-    pub async fn insert_token_record(&self, person_id: String) -> TokenRecord {
+    /*
+    TODO: things like the below sort of confuse me...
+    creating a token takes multiple queries and then getting the proper
+    return takes some more. I think some of this can be pulled into the
+    service... but what?
+
+    maybe a service function called get_token_record which will handle
+    building the token record out of the various parts.
+    */
+    pub async fn insert_token_record(&self, person_id: String, tran_conn: &NovaDB) -> TokenRecord {
         let meta = self
             .meta
-            .insert_meta(InsertMetaArgs {
-                created_by: person_id.clone(),
-            })
+            .insert_meta(
+                InsertMetaArgs {
+                    created_by: person_id.clone(),
+                },
+                Some(tran_conn),
+            )
             .await;
 
-        let query = self
-            .reader
-            .query_single_with_args_specify_result::<Thing, InsertTokenArgs>(
-                r#"
+        let query = tran_conn.query_single_with_args_specify_result::<Thing, InsertTokenArgs>(
+            r#"
                     LET $token_id = nb_token:ulid();
                     CREATE
                         $token_id
@@ -206,16 +203,20 @@ impl PersonsRepo {
                     
                     RETURN $token_id;
                 "#,
-                InsertTokenArgs {
-                    person: thing_from_string(&person_id),
-                    meta: thing_from_string(&meta.id),
-                },
-                2,
-            );
+            InsertTokenArgs {
+                person: thing_from_string(&person_id),
+                meta: thing_from_string(&meta.id),
+            },
+            2,
+        );
 
         let token_thing = match query.await {
             Some(t) => t,
-            None => panic!("Unable to get Thing of new token"),
+            None => {
+                tran_conn.cancel_tran().await;
+                error!("Unable to get token id, cancelling transaction");
+                panic!();
+            }
         };
 
         let token = self.select_token_record(token_thing.to_string()).await;

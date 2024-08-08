@@ -1,10 +1,12 @@
 use surrealdb::sql::Thing;
+use tracing::{error, info, instrument};
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::{InsertMetaArgs, Meta};
 use crate::utils::thing_from_string;
 
+#[derive(Debug)]
 pub struct MetaRepo {
     reader: NovaDB,
     writer: NovaDB,
@@ -55,15 +57,21 @@ impl MetaRepo {
     // - i.e. set_updated_at, set_updated_by, set_deleted_on, etc.
     // will probably create a meta service to transfer them to eventually
 
-    pub async fn insert_meta(&self, new_meta: InsertMetaArgs) -> Meta<()> {
-        println!("r: insert meta - {:#?}", new_meta);
+    #[instrument]
+    pub async fn insert_meta(
+        &self,
+        new_meta: InsertMetaArgs,
+        tran_conn: Option<&NovaDB>,
+    ) -> Meta<()> {
+        let conn = match tran_conn {
+            Some(t) => t,
+            None => &self.writer,
+        };
 
         let created_by = thing_from_string(&new_meta.created_by);
 
-        let query = self
-            .writer
-            .query_single_with_args_specify_result::<Meta<()>, (&str, Thing)>(
-                r#"
+        let query = conn.query_single_with_args_specify_result::<Meta<()>, (&str, Thing)>(
+            r#"
                     LET $ulid_id = meta:ulid();
 
                     CREATE
@@ -78,13 +86,20 @@ impl MetaRepo {
                     FROM meta
                     WHERE id = $ulid_id;
                 "#,
-                ("created_by", created_by),
-                2,
-            );
+            ("created_by", created_by),
+            2,
+        );
 
         match query.await {
             Some(m) => m,
-            None => panic!("No meta returned, potential issue creating meta for person"),
+            None => {
+                if tran_conn.is_some() {
+                    conn.cancel_tran().await;
+                    info!("transaction canceled")
+                }
+                error!("No meta returned, potential issue creating meta");
+                panic!();
+            }
         }
     }
 

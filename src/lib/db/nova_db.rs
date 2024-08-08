@@ -7,6 +7,17 @@ use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::{opt::auth::Root, Surreal};
 use tracing::{event, instrument, Level};
 
+pub async fn get_tran_connection() -> NovaDB {
+    NovaDB::new(SurrealDBConnection {
+        address: "127.0.0.1:52000",
+        username: "root",
+        password: "root",
+        namespace: "test",
+        database: "novabyte.blog",
+    })
+    .await
+}
+
 #[derive(Debug)]
 pub struct NovaDB {
     pub novadb: Surreal<Client>,

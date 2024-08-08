@@ -1,6 +1,6 @@
 use serde::Serialize;
 use surrealdb::sql::Thing;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
@@ -10,17 +10,9 @@ use crate::utils::thing_from_string;
 
 use super::r_meta::MetaRepo;
 
-// TODO: writer is ONLY public for transactions
-// i need to find a better way to access the transaction stuff
-// also, transaction stuff is odd cause i imagine the transaction
-// only lasts through the same instance and connection, meaning
-// that if i start a transaction on the writer and call reader
-// functions those reader functions probably won't be accounted
-// for in the transaction. though, i probably do only need
-// transaction functionality for the writer?
 pub struct PostsRepo {
     reader: NovaDB,
-    pub writer: NovaDB,
+    writer: NovaDB,
     meta: MetaRepo,
 }
 
@@ -60,31 +52,45 @@ impl PostsRepo {
         }
     }
 
-    pub async fn insert_post(&self, created_by: String) -> Post {
+    pub async fn insert_post(&self, created_by: String, tran_conn: &NovaDB) -> Post {
         println!("r: insert post");
 
         let meta = self
             .meta
-            .insert_meta(InsertMetaArgs {
-                created_by: created_by.clone(),
-            })
+            .insert_meta(
+                InsertMetaArgs {
+                    created_by: created_by.clone(),
+                },
+                Some(tran_conn),
+            )
             .await;
 
-        let query = self.writer.query_single_with_args::<Post, CreatePostArgs>(
-            r#"
+        let query = self
+            .writer
+            .query_single_with_args_specify_result::<Post, CreatePostArgs>(
+                r#"
+                    LET $post_id = post:ulid();
+
                     CREATE 
-                        post:ulid()
+                        $post_id
                     SET
                         meta = $meta;
+                    
+                    SELECT * FROM post WHERE id = $post_id;
                 "#,
-            CreatePostArgs {
-                meta: thing_from_string(&meta.id),
-            },
-        );
+                CreatePostArgs {
+                    meta: thing_from_string(&meta.id),
+                },
+                2,
+            );
 
         match query.await {
             Some(p) => p,
-            None => panic!("No post created"),
+            None => {
+                tran_conn.cancel_tran().await;
+                error!("No post returned after creation, cancelling transaction");
+                panic!();
+            }
         }
     }
 

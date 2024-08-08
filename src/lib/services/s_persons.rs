@@ -5,6 +5,7 @@ use argon2::{
 
 use crate::{
     constants::Constants,
+    db::nova_db::get_tran_connection,
     models::{
         person::{LogInCreds, Person, SignUpState},
         token::{Token, TokenRecord},
@@ -25,7 +26,11 @@ pub async fn sign_up(mut sign_up_state: SignUpState) -> Person {
 
     PersonsRepo::new()
         .await
-        .insert_person(sign_up_state, Constants::system_thing())
+        .insert_person(
+            sign_up_state,
+            Constants::system_thing(),
+            &get_tran_connection().await,
+        )
         .await
 }
 
@@ -56,9 +61,11 @@ pub async fn log_in_with_creds(creds: LogInCreds) -> Person {
 }
 
 pub async fn create_refresh_token(person_id: String) -> TokenRecord {
+    let tran_conn = get_tran_connection().await;
+
     PersonsRepo::new()
         .await
-        .insert_token_record(person_id)
+        .insert_token_record(person_id, &tran_conn)
         .await
 }
 
