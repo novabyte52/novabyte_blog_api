@@ -8,14 +8,12 @@ use super::meta::Meta;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Post {
     pub id: String,
-    pub meta: String,
+    pub meta: Meta<()>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PostHydrated {
     pub id: String,
-    pub created_by: String,
-    pub created_on: DateTime<Utc>,
     pub working_title: String,
     pub meta: Meta<()>,
 }
@@ -60,15 +58,6 @@ pub struct SelectPostArgs {
 
 #[derive(Debug, Deserialize)]
 pub struct Drafted {
-    pub id: String,
-    pub r#in: String,
-    pub r#out: String,
-    pub markdown: String,
-    pub at: DateTime<Utc>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Published {
     pub id: String,
     pub r#in: String,
     pub r#out: String,

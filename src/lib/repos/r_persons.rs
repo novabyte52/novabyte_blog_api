@@ -62,24 +62,40 @@ impl PersonsRepo {
             .insert_meta(InsertMetaArgs { created_by }, Some(tran_conn))
             .await;
 
-        let create_user = tran_conn.query_single_with_args::<Person, InsertPersonArgs>(
+        let create_user_query = format!(
             r#"
-                    CREATE 
-                        person:ulid()
-                    SET 
-                        email = $email,
-                        username = $username,
-                        pass_hash = $pass_hash,
-                        is_admin = false,
-                        meta = $meta;
-                "#,
-            InsertPersonArgs {
-                email: new_person.email,
-                username: new_person.username,
-                pass_hash,
-                meta: thing_from_string(&meta.id),
-            },
+                LET $person_id = person:ulid();
+
+                CREATE
+                    $person_id
+                SET 
+                    email = $email,
+                    username = $username,
+                    pass_hash = $pass_hash,
+                    is_admin = false,
+                    meta = $meta;
+                
+                SELECT
+                    fn::string_id(id) as id,
+                    *,
+                    {}
+                FROM person
+                WHERE id = $person_id;
+            "#,
+            &self.meta.select_meta_string
         );
+
+        let create_user = tran_conn
+            .query_single_with_args_specify_result::<Person, InsertPersonArgs>(
+                &create_user_query,
+                InsertPersonArgs {
+                    email: new_person.email,
+                    username: new_person.username,
+                    pass_hash,
+                    meta: thing_from_string(&meta.id),
+                },
+                2,
+            );
 
         match create_user.await {
             Some(p) => p,
@@ -90,25 +106,40 @@ impl PersonsRepo {
     pub async fn select_person(&self, person_id: String) -> Option<Person> {
         println!("r: select persons: {}", person_id);
 
-        self.reader.query_single_with_args(
-            "SELECT fn::string_id(id) as id, *, fn::string_id(meta) as meta FROM person WHERE id = $id",
-            SelectPersonArgs { id: thing_from_string(&person_id) },
-        ).await
+        let select_person_query = format!(
+            "SELECT fn::string_id(id) as id, *, {} FROM person WHERE id = $id",
+            &self.meta.select_meta_string
+        );
+
+        self.reader
+            .query_single_with_args(
+                &select_person_query,
+                SelectPersonArgs {
+                    id: thing_from_string(&person_id),
+                },
+            )
+            .await
     }
 
     pub async fn select_person_by_email(&self, email: String) -> Option<Person> {
         println!("r: select person by email | {:#?}", &email);
 
+        let select_person_query = format!(
+            r#"
+                SELECT
+                    fn::string_id(id) as id,
+                    username,
+                    email,
+                    is_admin,
+                    {}
+                FROM person WHERE email = $email
+            "#,
+            &self.meta.select_meta_string
+        );
+
         self.reader
             .query_single_with_args::<Person, (String, String)>(
-                r#"
-                    SELECT
-                        fn::string_id(id) as id,
-                        username,
-                        email,
-                        is_admin,
-                        fn::string_id(meta) as meta
-                    FROM person WHERE email = $email"#,
+                &select_person_query,
                 (String::from("email"), email),
             )
             .await
@@ -136,9 +167,12 @@ impl PersonsRepo {
     pub async fn select_persons(&self) -> Vec<Person> {
         println!("r: select posts");
 
-        let query = self.reader.query_many(
-            "SELECT fn::string_id(id) as id, *, fn::string_id(meta) as meta FROM person",
+        let select_persons_query = format!(
+            "SELECT fn::string_id(id) as id, *, {} FROM person",
+            &self.meta.select_meta_string
         );
+
+        let query = self.reader.query_many(&select_persons_query);
 
         match query.await {
             Ok(p) => p,
@@ -158,7 +192,7 @@ impl PersonsRepo {
                 FROM nb_token
                 WHERE id = $id;
             "#,
-            self.meta.select_meta_string.clone()
+            &self.meta.select_meta_string
         );
 
         let query = self.reader.query_single_with_args::<Token, (&str, Thing)>(
@@ -180,6 +214,9 @@ impl PersonsRepo {
 
     maybe a service function called get_token_record which will handle
     building the token record out of the various parts.
+
+    need to edit the query to just return the token object instead of only
+    returning the id.
     */
     pub async fn insert_token_record(&self, person_id: String, tran_conn: &NovaDB) -> TokenRecord {
         let meta = self

@@ -1,5 +1,5 @@
 use futures::future::join_all;
-use itertools::Itertools;
+// use itertools::Itertools;
 
 use crate::db::nova_db::{get_tran_connection, NovaDB};
 use crate::models::post::{DraftPostArgs, PostHydrated, PostVersion};
@@ -68,6 +68,7 @@ pub async fn draft_post(draft: DraftPostArgs, author: String) -> bool {
             draft.markdown,
             author.clone(),
             draft.published,
+            None,
         )
         .await;
         return true;
@@ -85,6 +86,7 @@ pub async fn draft_post(draft: DraftPostArgs, author: String) -> bool {
         draft.markdown,
         author,
         draft.published,
+        Some(&tran_conn),
     )
     .await;
 
@@ -95,16 +97,10 @@ pub async fn draft_post(draft: DraftPostArgs, author: String) -> bool {
 // TODO: rename to get_drafts
 /// Gets all current draft versions of any post that is not currently published
 pub async fn get_drafted_posts() -> Vec<PostVersion> {
-    let all_drafts = PostsRepo::new().await.select_drafted_posts().await;
+    let unpublished_post_ids = PostsRepo::new().await.select_unpublished_post_ids().await;
 
-    let unique_draft_ids = all_drafts
-        .into_iter()
-        .map(|p| p.id)
-        .unique_by(|id| id.clone())
-        .collect::<Vec<String>>();
-
-    join_all(unique_draft_ids.clone().into_iter().map(|p| async {
-        return get_current_draft(p).await;
+    join_all(unpublished_post_ids.into_iter().map(|p| {
+        return get_current_draft(p);
     }))
     .await
 }
@@ -128,7 +124,7 @@ pub async fn publish_new_draft(draft: DraftPostArgs, author: String) -> bool {
     if let Some(post_id) = draft.id {
         let post = get_post(post_id).await;
 
-        repo.publish_new_draft(post.id, draft.title, draft.markdown, author)
+        repo.publish_new_draft(post.id, draft.title, draft.markdown, author, None)
             .await;
         return true;
     };
@@ -139,8 +135,14 @@ pub async fn publish_new_draft(draft: DraftPostArgs, author: String) -> bool {
 
     let new_post = create_post(author.clone(), Some(&tran_conn)).await;
 
-    repo.publish_new_draft(new_post.id, draft.title, draft.markdown, author)
-        .await;
+    repo.publish_new_draft(
+        new_post.id,
+        draft.title,
+        draft.markdown,
+        author,
+        Some(&tran_conn),
+    )
+    .await;
 
     tran_conn.commit_tran().await;
     return true;
@@ -152,12 +154,15 @@ pub async fn publish_draft(draft_id: String) -> bool {
 
     let post_id = repo.select_post_id_for_draft_id(&draft_id).await;
 
+    let tran_conn = get_tran_connection().await;
+    tran_conn.begin_tran().await;
+
     /*
     unpublishing all drafts first to ensure there are never two published drafts for a post.
     i doubt the amount of drafts per post will ever go beyond at most 50 so this should be fine.
     */
-    if repo.unpublish_drafts_for_post_id(post_id).await {
-        repo.publish_draft(draft_id).await;
+    if repo.unpublish_drafts_for_post_id(post_id, &tran_conn).await {
+        repo.publish_draft(draft_id, &tran_conn).await;
         return true;
     }
 

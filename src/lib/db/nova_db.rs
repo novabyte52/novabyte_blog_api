@@ -175,4 +175,23 @@ impl NovaDB {
             Err(e) => Err(e),
         }
     }
+
+    #[instrument]
+    pub async fn query_many_specify_result<T: DeserializeOwned>(
+        &self,
+        query: &str,
+        result_idx: i8,
+    ) -> Result<Vec<T>, surrealdb::Error> {
+        let query = self.novadb.query(query);
+
+        let mut response = match query.await {
+            Ok(r) => r,
+            Err(e) => panic!("Query Error: {:#?}", e),
+        };
+
+        match response.take::<Vec<T>>(result_idx as usize) {
+            Ok(p) => Ok(p),
+            Err(e) => Err(e),
+        }
+    }
 }

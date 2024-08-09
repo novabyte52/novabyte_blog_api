@@ -19,3 +19,8 @@ pub struct Meta<T> {
     pub deleted_on: Option<DateTime<Utc>>,
     pub data: Option<T>,
 }
+
+#[derive(Deserialize)]
+pub struct IdContainer {
+    pub id: String,
+}

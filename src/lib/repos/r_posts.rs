@@ -1,15 +1,17 @@
+// use itertools::Itertools;
 use serde::Serialize;
 use surrealdb::sql::Thing;
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
-use crate::models::meta::InsertMetaArgs;
-use crate::models::post::{CreatePostArgs, Drafted, Post, PostHydrated, PostVersion, Published};
+use crate::models::meta::{IdContainer, InsertMetaArgs};
+use crate::models::post::{CreatePostArgs, Drafted, Post, PostHydrated, PostVersion};
 use crate::utils::thing_from_string;
 
 use super::r_meta::MetaRepo;
 
+#[derive(Debug)]
 pub struct PostsRepo {
     reader: NovaDB,
     writer: NovaDB,
@@ -65,19 +67,27 @@ impl PostsRepo {
             )
             .await;
 
+        let create_post_query = format!(
+            r#"
+                LET $post_id = post:ulid();
+
+                CREATE 
+                    $post_id
+                SET
+                    meta = $meta;
+                
+                SELECT
+                    fn::string_id(id) as id,
+                    {}
+                FROM post WHERE id = $post_id;
+            "#,
+            &self.meta.select_meta_string
+        );
+
         let query = self
             .writer
             .query_single_with_args_specify_result::<Post, CreatePostArgs>(
-                r#"
-                    LET $post_id = post:ulid();
-
-                    CREATE 
-                        $post_id
-                    SET
-                        meta = $meta;
-                    
-                    SELECT * FROM post WHERE id = $post_id;
-                "#,
+                &create_post_query,
                 CreatePostArgs {
                     meta: thing_from_string(&meta.id),
                 },
@@ -97,10 +107,14 @@ impl PostsRepo {
     pub async fn select_post(&self, post_id: String) -> Post {
         println!("r: select post: {}", post_id);
 
-        let query = self.reader.query_single_with_args(
-            "SELECT fn::string_id(id) as id, fn::string_id(meta) as meta FROM $post_id;",
-            ("post_id", thing_from_string(&post_id)),
+        let select_post_query = format!(
+            "SELECT fn::string_id(id) as id, {} FROM $post_id;",
+            &self.meta.select_meta_string
         );
+
+        let query = self
+            .reader
+            .query_single_with_args(&select_post_query, ("post_id", thing_from_string(&post_id)));
 
         match query.await {
             Some(r) => r,
@@ -115,8 +129,6 @@ impl PostsRepo {
             r#"
                 SELECT
                     fn::string_id(id) as id,
-                    fn::string_id(meta.created_by) as created_by,
-                    meta.created_on as created_on,
                     array::first(
                         (
                             SELECT
@@ -128,11 +140,12 @@ impl PostsRepo {
                             LIMIT 1
                         ).title
                     ) as working_title,
+                    meta.created_on,
                     {}
                 FROM post
-                ORDER BY created_on DESC;
+                ORDER BY meta.created_on DESC;
             "#,
-            self.meta.select_meta_string.clone()
+            &self.meta.select_meta_string
         );
 
         let query = self.reader.query_many(&formatted_query);
@@ -176,17 +189,34 @@ impl PostsRepo {
         markdown: String,
         person_id: String,
         published: bool,
+        tran_conn: Option<&NovaDB>,
     ) -> Drafted {
         println!("r: draft post");
-        let query = self.reader.query_single_with_args::<Drafted, DraftedArgs>(
+
+        let conn = match tran_conn {
+            Some(t) => t,
+            None => &self.writer,
+        };
+
+        let query = conn.query_single_with_args_specify_result::<Drafted, DraftedArgs>(
             r#"
+                LET $drafted_id = drafted:ulid();
+
                 RELATE $person_id->drafted->$post_id
                     SET
-                        id = drafted:ulid(),
+                        id = $drafted_id,
                         title = $title,
                         markdown = $markdown,
                         published = $published,
                         at = time::now();
+                
+                SELECT
+                    fn::string_id(id) as id,
+                    fn::string_id(in) as in,
+                    fn::string_id(out) as out,
+                    *
+                FROM drafted
+                WHERE id = $drafted_id;
             "#,
             DraftedArgs {
                 person_id: thing_from_string(&person_id),
@@ -195,11 +225,19 @@ impl PostsRepo {
                 markdown,
                 published,
             },
+            2,
         );
 
         match query.await {
             Some(p) => p,
-            None => panic!("Nothing returned when drafting post..."),
+            None => {
+                if tran_conn.is_some() {
+                    conn.cancel_tran().await;
+                    info!("Cancelling transaction")
+                }
+                error!("Issue creating draft for {}", post_id);
+                panic!();
+            }
         }
     }
 
@@ -227,23 +265,24 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_current_draft(&self, post_id: String) -> PostVersion {
         let query = self.reader.query_single_with_args(
             r#"
-            SELECT
-                fn::string_id(out) as id,
-                fn::string_id(id) as draft_id,
-                title,
-                markdown,
-                at,
-                fn::string_id(in) as author,
-                published
-            FROM drafted
-            WHERE out = $post_id
-                AND published = false
-            ORDER BY at DESC
-            LIMIT 1;
-        "#,
+                SELECT
+                    fn::string_id(out) as id,
+                    fn::string_id(id) as draft_id,
+                    title,
+                    markdown,
+                    at,
+                    fn::string_id(in) as author,
+                    published
+                FROM drafted
+                WHERE out = $post_id
+                    AND published = false
+                ORDER BY at DESC
+                LIMIT 1;
+            "#,
             ("post_id", thing_from_string(&post_id)),
         );
 
@@ -259,16 +298,33 @@ impl PostsRepo {
         title: String,
         markdown: String,
         person_id: String,
-    ) -> Published {
+        tran_conn: Option<&NovaDB>,
+    ) -> Drafted {
         println!("r: publish post");
-        let query = self.reader.query_single_with_args(
+        let conn = match tran_conn {
+            Some(t) => t,
+            None => &self.writer,
+        };
+
+        let query = conn.query_single_with_args(
             r#"
-                RELATE $person_id->drafted:ulid()->$post_id
+                LET $drafted_id = drafted:ulid();
+
+                RELATE $person_id->drafted->$post_id
                     SET
+                        id = $drafted_id,
                         title = $title,
                         markdown = $markdown,
                         published = true,
                         at = time::now();
+                
+                SELECT
+                    fn::string_id(id) as id,
+                    fn::string_id(in) as in,
+                    fn::string_id(out) as out,
+                    *
+                FROM drafted
+                WHERE id = $drafted_id;
             "#,
             DraftedArgs {
                 person_id: thing_from_string(&person_id),
@@ -281,28 +337,61 @@ impl PostsRepo {
 
         match query.await {
             Some(p) => p,
-            None => panic!("Nothing returned when publishing post..."),
+            None => {
+                if tran_conn.is_some() {
+                    conn.cancel_tran().await;
+                    info!("Cancelling transaction")
+                }
+                error!("Issue creating published draft for {}", post_id);
+                panic!();
+            }
         }
     }
 
-    pub async fn publish_draft(&self, draft_id: String) -> Published {
+    pub async fn publish_draft(&self, draft_id: String, tran_conn: &NovaDB) -> Drafted {
         println!("r: publish post");
-        let query = self.reader.query_single_with_args(
-            "UPDATE $draft_id SET published = true;",
+        let query = tran_conn.query_single_with_args_specify_result(
+            r#"
+                UPDATE $draft_id SET published = true;
+
+                SELECT
+                    fn::string_id(id) as id,
+                    fn::string_id(in) as in,
+                    fn::string_id(out) as out,
+                    *
+                FROM drafted
+                WHERE id = $draft_id;
+            "#,
             ("draft_id", thing_from_string(&draft_id)),
+            1,
         );
 
         match query.await {
             Some(p) => p,
-            None => panic!("Nothing returned when publishing post..."),
+            None => {
+                tran_conn.cancel_tran().await;
+                error!("Error publishing {}, cancelling transaction", draft_id);
+                panic!();
+            }
         }
     }
 
-    pub async fn unpublish_draft(&self, draft_id: String) -> Published {
+    pub async fn unpublish_draft(&self, draft_id: String) -> Drafted {
         println!("r: unpublish draft");
-        let query = self.reader.query_single_with_args(
-            "UPDATE $draft_id SET published = false;",
+        let query = self.reader.query_single_with_args_specify_result(
+            r#"
+                UPDATE $draft_id SET published = false;
+
+                SELECT
+                    fn::string_id(id) as id,
+                    fn::string_id(in) as in,
+                    fn::string_id(out) as out,
+                    *
+                FROM drafted
+                WHERE id = $draft_id;
+            "#,
             ("draft_id", thing_from_string(&draft_id)),
+            1,
         );
 
         match query.await {
@@ -335,13 +424,14 @@ impl PostsRepo {
         }
     }
 
-    pub async fn unpublish_drafts_for_post_id(&self, post_id: String) -> bool {
+    pub async fn unpublish_drafts_for_post_id(&self, post_id: String, tran_conn: &NovaDB) -> bool {
         info!("r: unpublish_drafts_for_posT_id");
-        let query = self.writer.query_none_with_args(
+        let query = tran_conn.query_none_with_args(
             r#"
-            UPDATE drafted
-            SET published = false
-            WHERE out = $post_id;"#,
+                UPDATE drafted
+                    SET published = false
+                WHERE out = $post_id;
+            "#,
             ("post_id", thing_from_string(&post_id)),
         );
 
@@ -360,5 +450,25 @@ impl PostsRepo {
             Some(id) => id,
             None => panic!("No post id found for draft: {:#?}", draft_id),
         }
+    }
+
+    pub async fn select_unpublished_post_ids(&self) -> Vec<String> {
+        let query = self.reader.query_many_specify_result(
+            r#"
+            LET $published = SELECT out FROM drafted WHERE published = true;
+            
+            LET $unpublished = SELECT fn::string_id(out) as id FROM drafted WHERE out NOT IN $published.out;
+            
+            RETURN array::distinct($unpublished);
+        "#,
+            2,
+        );
+
+        let result: Vec<IdContainer> = match query.await {
+            Ok(ids) => ids,
+            Err(e) => panic!("Error selecting unpublished post ids: {:#?}", e),
+        };
+
+        result.into_iter().map(|c| c.id).collect()
     }
 }
