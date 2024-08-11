@@ -24,7 +24,9 @@ use nb_lib::{
     services::s_persons,
 };
 use time::OffsetDateTime;
+use tracing::{info, instrument};
 
+#[instrument]
 pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse {
     let new_person = s_persons::sign_up(SignUpState {
         username: creds.username,
@@ -37,6 +39,7 @@ pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse 
     Json(new_person)
 }
 
+#[instrument]
 pub async fn login_person(jar: CookieJar, Json(creds): Json<LogInCreds>) -> impl IntoResponse {
     let person = s_persons::log_in_with_creds(creds).await;
 
@@ -60,6 +63,7 @@ pub async fn login_person(jar: CookieJar, Json(creds): Json<LogInCreds>) -> impl
     )
 }
 
+#[instrument]
 pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
     let nb_refresh = if let Some(cookie) = jar.get("nbRefresh") {
         cookie.clone().into_owned()
@@ -123,9 +127,10 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
     ))
 }
 
+#[instrument]
 pub async fn get_person(person_id: Result<Path<String>, PathRejection>) -> impl IntoResponse {
-    println!("c: get person");
-    println!("c: {:#?}", &person_id);
+    info!("c: get person");
+    info!("c: {:#?}", &person_id);
 
     let thing_param = match person_id {
         Ok(p) => p,
@@ -134,20 +139,22 @@ pub async fn get_person(person_id: Result<Path<String>, PathRejection>) -> impl 
 
     let thing = thing_param.0.clone();
 
-    println!("c: person thingParam - {:#?}", thing_param.0);
+    info!("c: person thingParam - {:#?}", thing_param.0);
 
     let generated_id = s_persons::get_person(thing).await;
     Ok(Json(generated_id))
 }
 
+#[instrument]
 pub async fn get_persons() -> impl IntoResponse {
-    println!("c: get persons");
+    info!("c: get persons");
 
     let persons = s_persons::get_persons().await;
 
     Json(persons)
 }
 
+#[instrument]
 fn generate_token(person: Person) -> String {
     let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
     let jwt_duration = env::var("JWT_DURATION_MINUTES").expect("cannot find JWT_DURATION_MINUTES");
@@ -169,7 +176,7 @@ fn generate_token(person: Person) -> String {
     }
 }
 
-// TODO: need to invalidate any other refresh tokens associated with this person
+#[instrument] // TODO: need to invalidate any other refresh tokens associated with this person
 fn generate_refresh_token(refresh_id: &String) -> String {
     let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
     let refresh_duration = env::var("REFRESH_DURATION_DAYS").expect("cannot find NOVA_SECRET");

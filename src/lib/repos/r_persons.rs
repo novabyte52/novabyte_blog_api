@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use surrealdb::sql::Thing;
-use tracing::error;
+use tracing::{error, info, instrument};
 
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
@@ -11,6 +11,7 @@ use crate::models::token::{InsertTokenArgs, Token, TokenRecord};
 use crate::repos::r_meta::MetaRepo;
 use crate::utils::thing_from_string;
 
+#[derive(Debug)]
 pub struct PersonsRepo {
     reader: NovaDB,
     _writer: NovaDB,
@@ -18,6 +19,7 @@ pub struct PersonsRepo {
 }
 
 impl PersonsRepo {
+    #[instrument]
     pub async fn new() -> Self {
         let reader = NovaDB::new(SurrealDBConnection {
             address: "127.0.0.1:52000",
@@ -44,13 +46,14 @@ impl PersonsRepo {
         }
     }
 
+    #[instrument]
     pub async fn insert_person(
         &self,
         new_person: SignUpState,
         created_by: String,
         tran_conn: &NovaDB,
     ) -> Person {
-        println!("r: insert person - {:#?}", created_by);
+        info!("r: insert person - {:#?}", created_by);
 
         let pass_hash = match new_person.pass_hash {
             Some(ph) => ph,
@@ -103,8 +106,9 @@ impl PersonsRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_person(&self, person_id: String) -> Option<Person> {
-        println!("r: select persons: {}", person_id);
+        info!("r: select persons: {}", person_id);
 
         let select_person_query = format!(
             "SELECT fn::string_id(id) as id, *, {} FROM person WHERE id = $id",
@@ -121,8 +125,9 @@ impl PersonsRepo {
             .await
     }
 
+    #[instrument]
     pub async fn select_person_by_email(&self, email: String) -> Option<Person> {
-        println!("r: select person by email | {:#?}", &email);
+        info!("r: select person by email | {:#?}", &email);
 
         let select_person_query = format!(
             r#"
@@ -145,8 +150,9 @@ impl PersonsRepo {
             .await
     }
 
+    #[instrument]
     pub async fn select_person_hash_by_email(&self, email: String) -> String {
-        println!("r: select person hash by email");
+        info!("r: select person hash by email");
 
         let query = self
             .reader
@@ -164,8 +170,9 @@ impl PersonsRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_persons(&self) -> Vec<Person> {
-        println!("r: select posts");
+        info!("r: select posts");
 
         let select_persons_query = format!(
             "SELECT fn::string_id(id) as id, *, {} FROM person",
@@ -180,8 +187,9 @@ impl PersonsRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_token_record(&self, token_id: String) -> Token {
-        println!("token_id: {:#?}", token_id);
+        info!("token_id: {:#?}", token_id);
 
         let token_query = format!(
             r#"
@@ -218,6 +226,7 @@ impl PersonsRepo {
     need to edit the query to just return the token object instead of only
     returning the id.
     */
+    #[instrument]
     pub async fn insert_token_record(&self, person_id: String, tran_conn: &NovaDB) -> TokenRecord {
         let meta = self
             .meta
@@ -273,6 +282,7 @@ impl PersonsRepo {
         }
     }
 
+    #[instrument]
     pub async fn soft_delete_token_record(&self, token_id: &String) {
         let query = self.reader.query_none_with_args(
             r#"

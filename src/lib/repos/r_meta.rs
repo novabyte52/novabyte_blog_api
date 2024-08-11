@@ -14,6 +14,7 @@ pub struct MetaRepo {
 }
 
 impl MetaRepo {
+    #[instrument]
     pub async fn new() -> Self {
         let reader = NovaDB::new(SurrealDBConnection {
             address: "127.0.0.1:52000",
@@ -103,8 +104,9 @@ impl MetaRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_meta(&self, meta_id: &String) -> Option<Meta<()>> {
-        println!("r: select meta: {}", meta_id);
+        info!("r: select meta: {}", meta_id);
 
         let meta_thing = thing_from_string(meta_id);
 

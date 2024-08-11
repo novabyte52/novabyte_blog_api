@@ -28,6 +28,7 @@ struct DraftedArgs {
 }
 
 impl PostsRepo {
+    #[instrument]
     pub async fn new() -> Self {
         let reader = NovaDB::new(SurrealDBConnection {
             address: "127.0.0.1:52000",
@@ -54,8 +55,9 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn insert_post(&self, created_by: String, tran_conn: &NovaDB) -> Post {
-        println!("r: insert post");
+        info!("r: insert post");
 
         let meta = self
             .meta
@@ -104,8 +106,9 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_post(&self, post_id: String) -> Post {
-        println!("r: select post: {}", post_id);
+        info!("r: select post: {}", post_id);
 
         let select_post_query = format!(
             "SELECT fn::string_id(id) as id, {} FROM $post_id;",
@@ -122,8 +125,9 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_posts(&self) -> Vec<PostHydrated> {
-        println!("r: select posts");
+        info!("r: select posts");
 
         let formatted_query = format!(
             r#"
@@ -156,8 +160,9 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_post_drafts(&self, post_id: String) -> Vec<PostVersion> {
-        println!("r: select post drafts");
+        info!("r: select post drafts");
 
         let query = self.reader.query_many_with_args(
             r#"
@@ -182,6 +187,7 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn draft_post(
         &self,
         post_id: String,
@@ -191,7 +197,7 @@ impl PostsRepo {
         published: bool,
         tran_conn: Option<&NovaDB>,
     ) -> Drafted {
-        println!("r: draft post");
+        info!("r: draft post");
 
         let conn = match tran_conn {
             Some(t) => t,
@@ -241,8 +247,9 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_drafted_posts(&self) -> Vec<PostVersion> {
-        println!("r: select drafted posts");
+        info!("r: select drafted posts");
         let query = self.reader.query_many(
             r#"
                 SELECT
@@ -292,6 +299,7 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn publish_new_draft(
         &self,
         post_id: String,
@@ -300,7 +308,7 @@ impl PostsRepo {
         person_id: String,
         tran_conn: Option<&NovaDB>,
     ) -> Drafted {
-        println!("r: publish post");
+        info!("r: publish post");
         let conn = match tran_conn {
             Some(t) => t,
             None => &self.writer,
@@ -348,8 +356,9 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn publish_draft(&self, draft_id: String, tran_conn: &NovaDB) -> Drafted {
-        println!("r: publish post");
+        info!("r: publish post");
         let query = tran_conn.query_single_with_args_specify_result(
             r#"
                 UPDATE $draft_id SET published = true;
@@ -376,8 +385,9 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn unpublish_draft(&self, draft_id: String) -> Drafted {
-        println!("r: unpublish draft");
+        info!("r: unpublish draft");
         let query = self.reader.query_single_with_args_specify_result(
             r#"
                 UPDATE $draft_id SET published = false;
@@ -400,8 +410,9 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_published_posts(&self) -> Vec<PostVersion> {
-        println!("r: select published posts");
+        info!("r: select published posts");
         let query = self.reader.query_many(
             r#"
                 SELECT
@@ -424,6 +435,7 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn unpublish_drafts_for_post_id(&self, post_id: String, tran_conn: &NovaDB) -> bool {
         info!("r: unpublish_drafts_for_posT_id");
         let query = tran_conn.query_none_with_args(
@@ -439,6 +451,7 @@ impl PostsRepo {
         true
     }
 
+    #[instrument]
     pub async fn select_post_id_for_draft_id(&self, draft_id: &String) -> String {
         info!("r: select_post_id_for_draft_id");
         let query = self.reader.query_single_with_args(
@@ -452,6 +465,7 @@ impl PostsRepo {
         }
     }
 
+    #[instrument]
     pub async fn select_unpublished_post_ids(&self) -> Vec<String> {
         let query = self.reader.query_many_specify_result(
             r#"

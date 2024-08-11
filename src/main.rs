@@ -44,8 +44,6 @@ async fn main() {
 
 #[instrument]
 async fn connect_to_db() {
-    info!("start");
-
     let addr = "ws:127.0.0.1:52000"; // ENV
 
     info!("connecting to: {:#?}", &addr);
@@ -124,10 +122,10 @@ async fn init_api() -> Router {
         .layer(cors)
 }
 
-#[instrument]
+#[instrument(skip(app))]
 async fn serve(app: Router, port: u16) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = TcpListener::bind(addr).await.unwrap();
-    println!("listening on {}", addr);
+    info!("listening on {}", addr);
     axum::serve(listener, app).await.unwrap();
 }

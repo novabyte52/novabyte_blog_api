@@ -2,6 +2,7 @@ use argon2::{
     password_hash::{rand_core::OsRng, SaltString},
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
+use tracing::{info, instrument};
 
 use crate::{
     constants::Constants,
@@ -13,6 +14,7 @@ use crate::{
     repos::r_persons::PersonsRepo,
 };
 
+#[instrument]
 pub async fn sign_up(mut sign_up_state: SignUpState) -> Person {
     let argon2 = Argon2::default();
 
@@ -34,8 +36,9 @@ pub async fn sign_up(mut sign_up_state: SignUpState) -> Person {
         .await
 }
 
+#[instrument]
 pub async fn log_in_with_creds(creds: LogInCreds) -> Person {
-    println!("s: log in");
+    info!("s: log in");
     let pass_hash = PersonsRepo::new()
         .await
         .select_person_hash_by_email(creds.email.clone())
@@ -60,6 +63,7 @@ pub async fn log_in_with_creds(creds: LogInCreds) -> Person {
     }
 }
 
+#[instrument]
 pub async fn create_refresh_token(person_id: String) -> TokenRecord {
     let tran_conn = get_tran_connection().await;
 
@@ -69,10 +73,12 @@ pub async fn create_refresh_token(person_id: String) -> TokenRecord {
         .await
 }
 
+#[instrument]
 pub async fn get_token_record(token_id: String) -> Token {
     PersonsRepo::new().await.select_token_record(token_id).await
 }
 
+#[instrument]
 pub async fn soft_delete_token_record(token_id: String) {
     PersonsRepo::new()
         .await
@@ -80,14 +86,16 @@ pub async fn soft_delete_token_record(token_id: String) {
         .await
 }
 
+#[instrument]
 pub async fn get_person(person_id: String) -> Option<Person> {
-    println!("s: get person");
+    info!("s: get person");
     PersonsRepo::new().await.select_person(person_id).await
 }
 
+#[instrument]
 pub async fn get_persons() -> Vec<Person> {
-    println!("s: get persons");
+    info!("s: get persons");
     let foo = PersonsRepo::new().await.select_persons().await;
-    println!("s: {:#?}", foo);
+    info!("s: {:#?}", foo);
     foo
 }

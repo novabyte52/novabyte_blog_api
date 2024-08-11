@@ -1,4 +1,5 @@
 use futures::future::join_all;
+use tracing::{info, instrument};
 // use itertools::Itertools;
 
 use crate::db::nova_db::{get_tran_connection, NovaDB};
@@ -6,8 +7,9 @@ use crate::models::post::{DraftPostArgs, PostHydrated, PostVersion};
 use crate::{models::post::Post, repos::r_posts::PostsRepo};
 
 /// Create a new post.
+#[instrument]
 async fn create_post(created_by: String, tran_conn: Option<&NovaDB>) -> Post {
-    println!("s: create post");
+    info!("s: create post");
 
     if let Some(conn) = tran_conn {
         return PostsRepo::new().await.insert_post(created_by, conn).await;
@@ -23,21 +25,24 @@ async fn create_post(created_by: String, tran_conn: Option<&NovaDB>) -> Post {
 }
 
 /// Get a post.
+#[instrument]
 pub async fn get_post(post_id: String) -> Post {
-    println!("s: get post");
+    info!("s: get post");
 
     PostsRepo::new().await.select_post(post_id).await
 }
 
 /// Get all posts.
+#[instrument]
 pub async fn get_posts() -> Vec<PostHydrated> {
-    println!("s: get posts");
+    info!("s: get posts");
     PostsRepo::new().await.select_posts().await
 }
 
 /// Get all drafts for the given post id.
+#[instrument]
 pub async fn get_post_drafts(post_id: String) -> Vec<PostVersion> {
-    println!("s: get post drafts");
+    info!("s: get post drafts");
     PostsRepo::new().await.select_post_drafts(post_id).await
 }
 
@@ -50,13 +55,14 @@ instead of obscuring it in the DraftPostArgs object
 ///
 /// If the id (a post id in this case) is not present create a new post
 /// and then create a new draft for that post.
+#[instrument]
 pub async fn draft_post(draft: DraftPostArgs, author: String) -> bool {
-    println!("s: draft post {:#?}", draft.clone());
+    info!("s: draft post {:#?}", draft.clone());
     let repo = PostsRepo::new().await;
 
     // if a post id exists create a new draft for the post and return
     if let Some(post_id) = draft.id {
-        println!(
+        info!(
             "post id exists on draft! adding draft to post: {:#?}",
             &post_id
         );
@@ -96,6 +102,7 @@ pub async fn draft_post(draft: DraftPostArgs, author: String) -> bool {
 
 // TODO: rename to get_drafts
 /// Gets all current draft versions of any post that is not currently published
+#[instrument]
 pub async fn get_drafted_posts() -> Vec<PostVersion> {
     let unpublished_post_ids = PostsRepo::new().await.select_unpublished_post_ids().await;
 
@@ -106,6 +113,7 @@ pub async fn get_drafted_posts() -> Vec<PostVersion> {
 }
 
 /// Gets the most recent draft for the given post id.
+#[instrument]
 pub async fn get_current_draft(post_id: String) -> PostVersion {
     PostsRepo::new().await.select_current_draft(post_id).await
 }
@@ -115,6 +123,7 @@ pub async fn get_current_draft(post_id: String) -> PostVersion {
 ///
 /// If the id (a post id in this case) is not present create a new post
 /// and then create a new draft for that post that is published.
+#[instrument]
 pub async fn publish_new_draft(draft: DraftPostArgs, author: String) -> bool {
     // TODO: make sure there are no other published drafts
     // for this post before publishing this one
@@ -149,6 +158,7 @@ pub async fn publish_new_draft(draft: DraftPostArgs, author: String) -> bool {
 }
 
 /// Publish an already existing draft by passing the draft id.
+#[instrument]
 pub async fn publish_draft(draft_id: String) -> bool {
     let repo = PostsRepo::new().await;
 
@@ -171,14 +181,16 @@ pub async fn publish_draft(draft_id: String) -> bool {
 
 // TODO: rename to get_published_drafts
 /// Gets all current published versions of any post that has a published draft.
+#[instrument]
 pub async fn get_published_posts() -> Vec<PostVersion> {
     PostsRepo::new().await.select_published_posts().await
 }
 
 // TODO: rename to unpublish_draft
 /// Unpublish the draft of the given draft id.
+#[instrument]
 pub async fn unpublish_post(draft_id: String) -> bool {
-    println!("s: unpublish post");
+    info!("s: unpublish post");
     PostsRepo::new().await.unpublish_draft(draft_id).await;
     true
 }

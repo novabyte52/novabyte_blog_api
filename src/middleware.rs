@@ -12,7 +12,9 @@ use jwt_simple::{
     claims::JWTClaims,
 };
 use nb_lib::{models::custom_claims::CustomClaims, services::s_persons::get_person};
+use tracing::instrument;
 
+#[instrument]
 pub async fn require_authentication(
     mut req: Request,
     next: Next,

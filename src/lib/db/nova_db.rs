@@ -5,8 +5,9 @@ use std::fmt::Debug;
 use std::usize;
 use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::{opt::auth::Root, Surreal};
-use tracing::{event, instrument, Level};
+use tracing::{event, info, instrument, Level};
 
+#[instrument]
 pub async fn get_tran_connection() -> NovaDB {
     NovaDB::new(SurrealDBConnection {
         address: "127.0.0.1:52000",
@@ -24,6 +25,7 @@ pub struct NovaDB {
 }
 
 impl NovaDB {
+    #[instrument]
     pub async fn new(conn: SurrealDBConnection<'_>) -> Self {
         let SurrealDBConnection {
             address,
@@ -40,42 +42,47 @@ impl NovaDB {
         Self { novadb: db }
     }
 
+    #[instrument]
     pub async fn begin_tran(&self) {
         let query = self.novadb.query("BEGIN TRANSACTION;");
 
         match query.await {
-            Ok(r) => println!("Begin tran response: {:#?}", r),
+            Ok(r) => info!("Begin tran response: {:#?}", r),
             Err(e) => panic!("Error beginning tran: {:#?}", e),
         }
     }
 
+    #[instrument]
     pub async fn commit_tran(&self) {
         let query = self.novadb.query("COMMIT TRANSACTION;");
 
         match query.await {
-            Ok(r) => println!("Commit tran response: {:#?}", r),
+            Ok(r) => info!("Commit tran response: {:#?}", r),
             Err(e) => panic!("Error committing tran: {:#?}", e),
         }
     }
 
+    #[instrument]
     pub async fn cancel_tran(&self) {
         let query = self.novadb.query("CANCEL TRANSACTION;");
 
         match query.await {
-            Ok(r) => println!("Cancel tran response: {:#?}", r),
+            Ok(r) => info!("Cancel tran response: {:#?}", r),
             Err(e) => panic!("Error canceling tran: {:#?}", e),
         }
     }
 
+    #[instrument]
     pub async fn query_none_with_args<A: Serialize + Debug>(&self, query: &str, args: A) {
         let query = self.novadb.query(query).bind(args);
 
         match query.await {
-            Ok(r) => println!("Query response: {:#?}", r),
+            Ok(r) => info!("Query response: {:#?}", r),
             Err(e) => panic!("Query Error: {}", e),
         }
     }
 
+    #[instrument]
     pub async fn query_single<T: DeserializeOwned>(
         &self,
         query: &str,
@@ -133,7 +140,7 @@ impl NovaDB {
             Err(e) => panic!("Query Error: {:#?}", e),
         };
 
-        println!("Response: {:#?}", &response);
+        info!("Response: {:#?}", &response);
 
         match response.take::<Option<T>>(result_idx as usize) {
             Ok(o) => o,
@@ -141,6 +148,7 @@ impl NovaDB {
         }
     }
 
+    #[instrument]
     pub async fn query_many<T: DeserializeOwned>(
         &self,
         query: &str,
@@ -158,6 +166,7 @@ impl NovaDB {
         }
     }
 
+    #[instrument]
     pub async fn query_many_with_args<T: DeserializeOwned, A: Serialize + Debug>(
         &self,
         query: &str,
