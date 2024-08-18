@@ -18,13 +18,13 @@ pub mod controllers;
 pub mod middleware;
 
 use controllers::{
-    c_persons::{get_person, get_persons, login_person, refresh_token, signup_person},
+    c_persons::{get_persons, handle_get_person, login_person, refresh_token, signup_person},
     c_posts::{
-        draft_post, get_drafted_posts, get_post_drafts, get_posts, get_published_posts,
-        publish_draft, unpublish_post,
+        get_draft, get_drafted_posts, get_post_drafts, get_posts, get_published_posts,
+        handle_create_draft, publish_draft, unpublish_post,
     },
 };
-use middleware::require_authentication;
+use middleware::{is_admin, require_authentication};
 
 #[tokio::main]
 async fn main() {
@@ -99,26 +99,29 @@ async fn init_api() -> Router {
         .allow_credentials(true);
 
     Router::new()
-        // persons routes
+        // admin persons routes
         .route("/persons", get(get_persons))
-        .route("/persons/:person_id", get(get_person))
-        // posts routes
+        // admin posts routes
         .route("/posts", get(get_posts))
         .route("/posts/drafts", get(get_drafted_posts))
-        .route("/posts/drafts", post(draft_post)) // ?publish=bool
+        .route("/posts/drafts", post(handle_create_draft)) // ?publish=bool
+        .route("/posts/drafts/:draft_id", get(get_draft))
         .route("/posts/drafts/:draft_id/publish", post(publish_draft))
         .route("/posts/drafts/:draft_id/publish", delete(unpublish_post))
         .route("/posts/:post_id/drafts", get(get_post_drafts))
-        // authentication layer (all previous routes require authentication to access)
+        .route_layer(from_fn(is_admin))
+        // eventual endpoints for profiles, comments, etc. will go in between the authorization check and the admin check
+        .route("/persons/:person_id", get(handle_get_person))
+        // authentication layer (all above routes require authentication to access)
         .route_layer(from_fn(require_authentication))
-        // all routes after are public and can be accessed by ANYONE
-        // public persons routes
+        // all routes below are anonymous, public and can be accessed by ANYONE
+        // anonymous public persons routes
         .route("/persons/login", post(login_person))
         .route("/persons/signup", post(signup_person))
         .route("/persons/refresh", get(refresh_token))
-        // public posts routes
+        // anonymous public posts routes
         .route("/posts/published", get(get_published_posts))
-        // all routes should stay behind the CORS layer
+        // all routes should stay above the CORS layer
         .layer(cors)
 }
 

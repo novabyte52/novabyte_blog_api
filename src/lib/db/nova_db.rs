@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use std::usize;
 use surrealdb::engine::remote::ws::{Client, Ws};
 use surrealdb::{opt::auth::Root, Surreal};
-use tracing::{event, info, instrument, Level};
+use tracing::{info, instrument};
 
 #[instrument]
 pub async fn get_tran_connection() -> NovaDB {
@@ -42,7 +42,7 @@ impl NovaDB {
         Self { novadb: db }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn begin_tran(&self) {
         let query = self.novadb.query("BEGIN TRANSACTION;");
 
@@ -52,7 +52,7 @@ impl NovaDB {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn commit_tran(&self) {
         let query = self.novadb.query("COMMIT TRANSACTION;");
 
@@ -62,7 +62,7 @@ impl NovaDB {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn cancel_tran(&self) {
         let query = self.novadb.query("CANCEL TRANSACTION;");
 
@@ -72,7 +72,7 @@ impl NovaDB {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn query_none_with_args<A: Serialize + Debug>(&self, query: &str, args: A) {
         let query = self.novadb.query(query).bind(args);
 
@@ -82,7 +82,7 @@ impl NovaDB {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn query_single<T: DeserializeOwned>(
         &self,
         query: &str,
@@ -100,15 +100,13 @@ impl NovaDB {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn query_single_with_args<T: DeserializeOwned, A: Serialize + Debug>(
         &self,
         query: &str,
         args: A,
     ) -> Option<T> {
         let query = self.novadb.query(query).bind(args);
-
-        event!(Level::INFO, "built query: {query:#?}", query = &query);
 
         let mut response = match query.await {
             Ok(r) => r,
@@ -121,7 +119,7 @@ impl NovaDB {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn query_single_with_args_specify_result<
         T: DeserializeOwned,
         A: Serialize + Debug,
@@ -132,8 +130,6 @@ impl NovaDB {
         result_idx: i8,
     ) -> Option<T> {
         let query = self.novadb.query(query).bind(args);
-
-        event!(Level::INFO, "built query: {query:#?}", query = &query);
 
         let mut response = match query.await {
             Ok(r) => r,
@@ -148,7 +144,7 @@ impl NovaDB {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn query_many<T: DeserializeOwned>(
         &self,
         query: &str,
@@ -166,7 +162,7 @@ impl NovaDB {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn query_many_with_args<T: DeserializeOwned, A: Serialize + Debug>(
         &self,
         query: &str,
@@ -185,7 +181,7 @@ impl NovaDB {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn query_many_specify_result<T: DeserializeOwned>(
         &self,
         query: &str,

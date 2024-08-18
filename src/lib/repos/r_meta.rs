@@ -37,6 +37,8 @@ impl MetaRepo {
         Self {
             reader,
             writer,
+            // TODO: will need to update this eventually to also make the updated_by
+            // and deleted_by properties into strings
             select_meta_string: r#"
                 # potential meta selection string
                 meta,
@@ -57,8 +59,24 @@ impl MetaRepo {
     // TODO: create some helper functions for easy updating of meta info
     // - i.e. set_updated_at, set_updated_by, set_deleted_on, etc.
     // will probably create a meta service to transfer them to eventually
+    pub async fn select_meta_string() -> String {
+        r#"
+            # potential meta selection string
+            meta,
+            (
+                SELECT
+                    fn::string_id(id) as id,
+                    fn::string_id(created_by) as created_by,
+                    *
+                FROM ONLY meta
+                WHERE id = $parent.meta
+                LIMIT 1
+            ) as meta
+        "#
+        .to_string()
+    }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn insert_meta(
         &self,
         new_meta: InsertMetaArgs,
@@ -73,10 +91,10 @@ impl MetaRepo {
 
         let query = conn.query_single_with_args_specify_result::<Meta<()>, (&str, Thing)>(
             r#"
-                    LET $ulid_id = meta:ulid();
+                    LET $meta_id = meta:ulid();
 
                     CREATE
-                        $ulid_id
+                        $meta_id
                     SET
                         created_by = $created_by;
                     
@@ -85,7 +103,7 @@ impl MetaRepo {
                         fn::string_id(created_by) as created_by,
                         *
                     FROM meta
-                    WHERE id = $ulid_id;
+                    WHERE id = $meta_id;
                 "#,
             ("created_by", created_by),
             2,
@@ -104,7 +122,7 @@ impl MetaRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_meta(&self, meta_id: &String) -> Option<Meta<()>> {
         info!("r: select meta: {}", meta_id);
 

@@ -46,15 +46,13 @@ impl PersonsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn insert_person(
         &self,
         new_person: SignUpState,
         created_by: String,
         tran_conn: &NovaDB,
     ) -> Person {
-        info!("r: insert person - {:#?}", created_by);
-
         let pass_hash = match new_person.pass_hash {
             Some(ph) => ph,
             None => panic!("Can't create user without the password hash!"),
@@ -106,7 +104,7 @@ impl PersonsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_person(&self, person_id: String) -> Option<Person> {
         info!("r: select persons: {}", person_id);
 
@@ -125,7 +123,7 @@ impl PersonsRepo {
             .await
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_person_by_email(&self, email: String) -> Option<Person> {
         info!("r: select person by email | {:#?}", &email);
 
@@ -150,7 +148,7 @@ impl PersonsRepo {
             .await
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_person_hash_by_email(&self, email: String) -> String {
         info!("r: select person hash by email");
 
@@ -170,7 +168,7 @@ impl PersonsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_persons(&self) -> Vec<Person> {
         info!("r: select posts");
 
@@ -187,7 +185,7 @@ impl PersonsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_token_record(&self, token_id: String) -> Token {
         info!("token_id: {:#?}", token_id);
 
@@ -226,7 +224,7 @@ impl PersonsRepo {
     need to edit the query to just return the token object instead of only
     returning the id.
     */
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn insert_token_record(&self, person_id: String, tran_conn: &NovaDB) -> TokenRecord {
         let meta = self
             .meta
@@ -282,7 +280,7 @@ impl PersonsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn soft_delete_token_record(&self, token_id: &String) {
         let query = self.reader.query_none_with_args(
             r#"

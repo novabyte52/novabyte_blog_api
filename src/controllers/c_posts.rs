@@ -20,16 +20,25 @@ pub async fn get_post_drafts(Path(post_id): Path<String>) -> impl IntoResponse {
     Json(s_posts::get_post_drafts(post_id).await)
 }
 
+/// GET endpoint to handle getting a draft based on the draft_id passed in the request url.
+/// Sends the retrieved draft in the response body.
 #[instrument]
-pub async fn draft_post(
+pub async fn get_draft(Path(draft_id): Path<String>) -> impl IntoResponse {
+    let draft = s_posts::get_draft(draft_id).await;
+
+    Json(draft)
+}
+
+/// POST endpoint to handle the creation of a draft.
+/// Sends the newly created draft in the response body.
+#[instrument]
+pub async fn handle_create_draft(
     current_person: Extension<Person>,
     draft_post: Json<DraftPostArgs>,
 ) -> impl IntoResponse {
-    info!("c: draft post {:#?}", draft_post.clone());
+    let new_draft = s_posts::create_draft(draft_post.0.clone(), current_person.id.clone()).await;
 
-    s_posts::draft_post(draft_post.0.clone(), current_person.id.clone()).await;
-
-    StatusCode::NO_CONTENT
+    Json(new_draft)
 }
 
 #[instrument]

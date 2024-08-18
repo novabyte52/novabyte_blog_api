@@ -11,10 +11,27 @@ use jwt_simple::{
     algorithms::{HS256Key, MACLike},
     claims::JWTClaims,
 };
-use nb_lib::{models::custom_claims::CustomClaims, services::s_persons::get_person};
+use nb_lib::{
+    models::{custom_claims::CustomClaims, person::Person},
+    services::s_persons::get_person,
+};
 use tracing::instrument;
 
-#[instrument]
+#[instrument(skip(req, next))]
+pub async fn is_admin(req: Request, next: Next) -> Result<Response, (StatusCode, String)> {
+    if let Some(person) = req.extensions().get::<Person>() {
+        if person.is_admin {
+            return Ok(next.run(req).await);
+        }
+    }
+
+    Err((
+        StatusCode::UNAUTHORIZED,
+        "You are not authorized to access this endpoint.".into(),
+    ))
+}
+
+#[instrument(skip(req, next))]
 pub async fn require_authentication(
     mut req: Request,
     next: Next,
@@ -55,9 +72,9 @@ pub async fn require_authentication(
     let person_id = sub;
 
     if let Some(current_person) = get_person(person_id).await {
-        // insert the current user into a request extension so the handler can
-        // extract it
+        // insert the current user into a request extension so the handler can extract it
         req.extensions_mut().insert(current_person);
+
         Ok(next.run(req).await)
     } else {
         Err((StatusCode::NOT_FOUND, "Cannot find person.".into()))

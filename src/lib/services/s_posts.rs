@@ -46,9 +46,13 @@ pub async fn get_post_drafts(post_id: String) -> Vec<PostVersion> {
     PostsRepo::new().await.select_post_drafts(post_id).await
 }
 
+#[instrument]
+pub async fn get_draft(draft_id: String) -> PostVersion {
+    PostsRepo::new().await.select_draft(&draft_id).await
+}
+
 /*
-TODO: rename to create_draft.
-and i should probably pass the optional post_id as an argument
+TODO: i should probably pass the optional post_id as an argument
 instead of obscuring it in the DraftPostArgs object
 */
 /// Create a new draft for a post.
@@ -56,8 +60,7 @@ instead of obscuring it in the DraftPostArgs object
 /// If the id (a post id in this case) is not present create a new post
 /// and then create a new draft for that post.
 #[instrument]
-pub async fn draft_post(draft: DraftPostArgs, author: String) -> bool {
-    info!("s: draft post {:#?}", draft.clone());
+pub async fn create_draft(draft: DraftPostArgs, author_id: String) -> PostVersion {
     let repo = PostsRepo::new().await;
 
     // if a post id exists create a new draft for the post and return
@@ -68,36 +71,38 @@ pub async fn draft_post(draft: DraftPostArgs, author: String) -> bool {
         );
         let post = get_post(post_id).await;
 
-        repo.draft_post(
-            post.id as String,
-            draft.title,
-            draft.markdown,
-            author.clone(),
-            draft.published,
-            None,
-        )
-        .await;
-        return true;
+        return repo
+            .create_draft(
+                post.id as String,
+                draft.title,
+                draft.markdown,
+                author_id.clone(),
+                draft.published,
+                None,
+            )
+            .await;
     };
 
     // no post id so create a new post
     let tran_conn = get_tran_connection().await;
     tran_conn.begin_tran().await;
 
-    let new_post = create_post(author.clone(), Some(&tran_conn)).await;
+    let new_post = create_post(author_id.clone(), Some(&tran_conn)).await;
 
-    repo.draft_post(
-        new_post.id,
-        draft.title,
-        draft.markdown,
-        author,
-        draft.published,
-        Some(&tran_conn),
-    )
-    .await;
+    let new_draft = repo
+        .create_draft(
+            new_post.id,
+            draft.title,
+            draft.markdown,
+            author_id,
+            draft.published,
+            Some(&tran_conn),
+        )
+        .await;
 
     tran_conn.commit_tran().await;
-    return true;
+
+    new_draft
 }
 
 // TODO: rename to get_drafts

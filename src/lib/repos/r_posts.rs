@@ -6,7 +6,7 @@ use tracing::{error, info, instrument};
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::{IdContainer, InsertMetaArgs};
-use crate::models::post::{CreatePostArgs, Drafted, Post, PostHydrated, PostVersion};
+use crate::models::post::{Drafted, Post, PostHydrated, PostVersion};
 use crate::utils::thing_from_string;
 
 use super::r_meta::MetaRepo;
@@ -55,7 +55,7 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn insert_post(&self, created_by: String, tran_conn: &NovaDB) -> Post {
         info!("r: insert post");
 
@@ -88,11 +88,9 @@ impl PostsRepo {
 
         let query = self
             .writer
-            .query_single_with_args_specify_result::<Post, CreatePostArgs>(
+            .query_single_with_args_specify_result::<Post, (&str, Thing)>(
                 &create_post_query,
-                CreatePostArgs {
-                    meta: thing_from_string(&meta.id),
-                },
+                ("meta", thing_from_string(&meta.id)),
                 2,
             );
 
@@ -106,7 +104,7 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_post(&self, post_id: String) -> Post {
         info!("r: select post: {}", post_id);
 
@@ -125,11 +123,11 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_posts(&self) -> Vec<PostHydrated> {
         info!("r: select posts");
 
-        let formatted_query = format!(
+        let select_posts = format!(
             r#"
                 SELECT
                     fn::string_id(id) as id,
@@ -152,7 +150,7 @@ impl PostsRepo {
             &self.meta.select_meta_string
         );
 
-        let query = self.reader.query_many(&formatted_query);
+        let query = self.reader.query_many(&select_posts);
 
         match query.await {
             Ok(r) => r,
@@ -160,11 +158,9 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
-    pub async fn select_post_drafts(&self, post_id: String) -> Vec<PostVersion> {
-        info!("r: select post drafts");
-
-        let query = self.reader.query_many_with_args(
+    #[instrument(skip(self))]
+    pub async fn select_draft(&self, draft_id: &String) -> PostVersion {
+        let select_draft = format!(
             r#"
                 SELECT
                     fn::string_id(out) as id,
@@ -173,13 +169,50 @@ impl PostsRepo {
                     markdown,
                     at,
                     fn::string_id(in) as author,
-                    published
+                    published,
+                    {}
+                FROM drafted
+                WHERE id = $draft_id
+                ORDER BY at DESC;
+            "#,
+            &self.meta.select_meta_string
+        );
+
+        let query = self
+            .reader
+            .query_single_with_args(&select_draft, ("draft_id", thing_from_string(draft_id)));
+
+        match query.await {
+            Some(p) => p,
+            None => panic!("No draft found for {}!", draft_id),
+        }
+    }
+
+    #[instrument(skip(self))]
+    pub async fn select_post_drafts(&self, post_id: String) -> Vec<PostVersion> {
+        info!("r: select post drafts");
+
+        let select_drafts = format!(
+            r#"
+                SELECT
+                    fn::string_id(out) as id,
+                    fn::string_id(id) as draft_id,
+                    title,
+                    markdown,
+                    at,
+                    fn::string_id(in) as author,
+                    published,
+                    {}
                 FROM drafted
                 WHERE out = $post_id
                 ORDER BY at DESC;
             "#,
-            ("post_id", thing_from_string(&post_id)),
+            &self.meta.select_meta_string
         );
+
+        let query = self
+            .reader
+            .query_many_with_args(&select_drafts, ("post_id", thing_from_string(&post_id)));
 
         match query.await {
             Ok(p) => p,
@@ -187,8 +220,8 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
-    pub async fn draft_post(
+    #[instrument(skip(self))]
+    pub async fn create_draft(
         &self,
         post_id: String,
         title: String,
@@ -196,17 +229,16 @@ impl PostsRepo {
         person_id: String,
         published: bool,
         tran_conn: Option<&NovaDB>,
-    ) -> Drafted {
-        info!("r: draft post");
-
+    ) -> PostVersion {
         let conn = match tran_conn {
             Some(t) => t,
             None => &self.writer,
         };
 
-        let query = conn.query_single_with_args_specify_result::<Drafted, DraftedArgs>(
+        let drafted_query = format!(
             r#"
                 LET $drafted_id = drafted:ulid();
+                LET $meta_id = SELECT meta FROM post WHERE id = $post_id;
 
                 RELATE $person_id->drafted->$post_id
                     SET
@@ -214,16 +246,23 @@ impl PostsRepo {
                         title = $title,
                         markdown = $markdown,
                         published = $published,
-                        at = time::now();
+                        at = time::now(),
+                        meta = $meta_id;
                 
                 SELECT
-                    fn::string_id(id) as id,
-                    fn::string_id(in) as in,
-                    fn::string_id(out) as out,
-                    *
+                    fn::string_id(id) as draft_id,
+                    fn::string_id(in) as author,
+                    fn::string_id(out) as id,
+                    *,
+                    {}
                 FROM drafted
                 WHERE id = $drafted_id;
             "#,
+            &self.meta.select_meta_string
+        );
+
+        let query = conn.query_single_with_args_specify_result::<PostVersion, DraftedArgs>(
+            &drafted_query,
             DraftedArgs {
                 person_id: thing_from_string(&person_id),
                 post_id: thing_from_string(&post_id),
@@ -247,10 +286,11 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_drafted_posts(&self) -> Vec<PostVersion> {
         info!("r: select drafted posts");
-        let query = self.reader.query_many(
+
+        let select_drafts = format!(
             r#"
                 SELECT
                     fn::string_id(out) as id,
@@ -259,12 +299,16 @@ impl PostsRepo {
                     markdown,
                     at,
                     fn::string_id(in) as author,
-                    published
+                    published,
+                    {}
                 FROM drafted
                 WHERE published = false
                 ORDER BY at DESC;
             "#,
+            &self.meta.select_meta_string
         );
+
+        let query = self.reader.query_many(&select_drafts);
 
         match query.await {
             Ok(p) => p,
@@ -272,9 +316,9 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_current_draft(&self, post_id: String) -> PostVersion {
-        let query = self.reader.query_single_with_args(
+        let select_draft = format!(
             r#"
                 SELECT
                     fn::string_id(out) as id,
@@ -283,15 +327,20 @@ impl PostsRepo {
                     markdown,
                     at,
                     fn::string_id(in) as author,
-                    published
+                    published,
+                    {}
                 FROM drafted
                 WHERE out = $post_id
                     AND published = false
                 ORDER BY at DESC
                 LIMIT 1;
             "#,
-            ("post_id", thing_from_string(&post_id)),
+            &self.meta.select_meta_string
         );
+
+        let query = self
+            .reader
+            .query_single_with_args(&select_draft, ("post_id", thing_from_string(&post_id)));
 
         match query.await {
             Some(p) => p,
@@ -299,7 +348,7 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn publish_new_draft(
         &self,
         post_id: String,
@@ -314,9 +363,10 @@ impl PostsRepo {
             None => &self.writer,
         };
 
-        let query = conn.query_single_with_args(
+        let drafted_query = format!(
             r#"
                 LET $drafted_id = drafted:ulid();
+                LET $meta_id = SELECT meta FROM post WHERE id = $post_id;
 
                 RELATE $person_id->drafted->$post_id
                     SET
@@ -324,16 +374,23 @@ impl PostsRepo {
                         title = $title,
                         markdown = $markdown,
                         published = true,
-                        at = time::now();
+                        at = time::now(),
+                        meta = $meta_id;
                 
                 SELECT
                     fn::string_id(id) as id,
                     fn::string_id(in) as in,
                     fn::string_id(out) as out,
-                    *
+                    *,
+                    {}
                 FROM drafted
                 WHERE id = $drafted_id;
             "#,
+            &self.meta.select_meta_string
+        );
+
+        let query = conn.query_single_with_args(
+            &drafted_query,
             DraftedArgs {
                 person_id: thing_from_string(&person_id),
                 post_id: thing_from_string(&post_id),
@@ -356,10 +413,11 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn publish_draft(&self, draft_id: String, tran_conn: &NovaDB) -> Drafted {
         info!("r: publish post");
-        let query = tran_conn.query_single_with_args_specify_result(
+
+        let drafted_query = format!(
             r#"
                 UPDATE $draft_id SET published = true;
 
@@ -367,10 +425,16 @@ impl PostsRepo {
                     fn::string_id(id) as id,
                     fn::string_id(in) as in,
                     fn::string_id(out) as out,
-                    *
+                    *,
+                    {}
                 FROM drafted
                 WHERE id = $draft_id;
             "#,
+            &self.meta.select_meta_string
+        );
+
+        let query = tran_conn.query_single_with_args_specify_result(
+            &drafted_query,
             ("draft_id", thing_from_string(&draft_id)),
             1,
         );
@@ -385,10 +449,11 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn unpublish_draft(&self, draft_id: String) -> Drafted {
         info!("r: unpublish draft");
-        let query = self.reader.query_single_with_args_specify_result(
+
+        let drafted_query = format!(
             r#"
                 UPDATE $draft_id SET published = false;
 
@@ -396,10 +461,16 @@ impl PostsRepo {
                     fn::string_id(id) as id,
                     fn::string_id(in) as in,
                     fn::string_id(out) as out,
-                    *
+                    *,
+                    {}
                 FROM drafted
                 WHERE id = $draft_id;
             "#,
+            &self.meta.select_meta_string
+        );
+
+        let query = self.reader.query_single_with_args_specify_result(
+            &drafted_query,
             ("draft_id", thing_from_string(&draft_id)),
             1,
         );
@@ -410,10 +481,11 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_published_posts(&self) -> Vec<PostVersion> {
         info!("r: select published posts");
-        let query = self.reader.query_many(
+
+        let select_published = format!(
             r#"
                 SELECT
                     fn::string_id(out) as id,
@@ -422,12 +494,16 @@ impl PostsRepo {
                     markdown,
                     at,
                     fn::string_id(in) as author,
-                    published
+                    published,
+                    {}
                 FROM drafted
                 WHERE published = true
                 ORDER BY at DESC;
             "#,
+            &self.meta.select_meta_string
         );
+
+        let query = self.reader.query_many(&select_published);
 
         match query.await {
             Ok(p) => p,
@@ -435,7 +511,7 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn unpublish_drafts_for_post_id(&self, post_id: String, tran_conn: &NovaDB) -> bool {
         info!("r: unpublish_drafts_for_posT_id");
         let query = tran_conn.query_none_with_args(
@@ -451,7 +527,7 @@ impl PostsRepo {
         true
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_post_id_for_draft_id(&self, draft_id: &String) -> String {
         info!("r: select_post_id_for_draft_id");
         let query = self.reader.query_single_with_args(
@@ -465,7 +541,7 @@ impl PostsRepo {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn select_unpublished_post_ids(&self) -> Vec<String> {
         let query = self.reader.query_many_specify_result(
             r#"

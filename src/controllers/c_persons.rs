@@ -1,11 +1,6 @@
 use std::{env, time::Duration};
 
-use axum::{
-    extract::{rejection::PathRejection, Path},
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::Path, http::StatusCode, response::IntoResponse, Extension, Json};
 use axum_extra::extract::{
     cookie::{Cookie, SameSite},
     CookieJar,
@@ -128,21 +123,25 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
 }
 
 #[instrument]
-pub async fn get_person(person_id: Result<Path<String>, PathRejection>) -> impl IntoResponse {
-    info!("c: get person");
-    info!("c: {:#?}", &person_id);
+pub async fn handle_get_person(
+    current_person: Extension<Person>,
+    Path(person_id): Path<String>,
+) -> impl IntoResponse {
+    if person_id != current_person.id && !current_person.is_admin {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "You are unauthorized to view other users info.".to_string(),
+        ));
+    }
 
-    let thing_param = match person_id {
-        Ok(p) => p,
-        Err(err) => return Err((StatusCode::BAD_REQUEST, err.to_string())),
+    if let Some(person) = s_persons::get_person(person_id.clone()).await {
+        return Ok(Json(person));
     };
 
-    let thing = thing_param.0.clone();
-
-    info!("c: person thingParam - {:#?}", thing_param.0);
-
-    let generated_id = s_persons::get_person(thing).await;
-    Ok(Json(generated_id))
+    Err((
+        StatusCode::NOT_FOUND,
+        format!("Unable to find person with id: {}", person_id),
+    ))
 }
 
 #[instrument]
