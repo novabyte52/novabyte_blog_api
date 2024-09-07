@@ -14,7 +14,7 @@ use crate::utils::thing_from_string;
 #[derive(Debug)]
 pub struct PersonsRepo {
     reader: NovaDB,
-    _writer: NovaDB,
+    writer: NovaDB,
     meta: MetaRepo,
 }
 
@@ -41,16 +41,16 @@ impl PersonsRepo {
 
         Self {
             reader,
-            _writer: writer,
+            writer: writer,
             meta: MetaRepo::new().await,
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, tran_conn))]
     pub async fn insert_person(
         &self,
         new_person: SignUpState,
-        created_by: String,
+        created_by: &str,
         tran_conn: &NovaDB,
     ) -> Person {
         let pass_hash = match new_person.pass_hash {
@@ -60,7 +60,12 @@ impl PersonsRepo {
 
         let meta = self
             .meta
-            .insert_meta(InsertMetaArgs { created_by }, Some(tran_conn))
+            .insert_meta(
+                InsertMetaArgs {
+                    created_by: created_by.into(),
+                },
+                Some(tran_conn),
+            )
             .await;
 
         let create_user_query = format!(
@@ -98,7 +103,15 @@ impl PersonsRepo {
                 2,
             );
 
-        match create_user.await {
+        let response = match create_user.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error creating person: {:#?}", e);
+                panic!()
+            }
+        };
+
+        match response {
             Some(p) => p,
             None => panic!("No person returned, potential issue creating person"),
         }
@@ -113,14 +126,25 @@ impl PersonsRepo {
             &self.meta.select_meta_string
         );
 
-        self.reader
-            .query_single_with_args(
-                &select_person_query,
-                SelectPersonArgs {
-                    id: thing_from_string(&person_id),
-                },
-            )
-            .await
+        let query = self.reader.query_single_with_args(
+            &select_person_query,
+            SelectPersonArgs {
+                id: thing_from_string(&person_id),
+            },
+        );
+
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error selecting person: {:#?}", e);
+                panic!()
+            }
+        };
+
+        match response {
+            Some(p) => p,
+            None => panic!(),
+        }
     }
 
     #[instrument(skip(self))]
@@ -140,12 +164,20 @@ impl PersonsRepo {
             &self.meta.select_meta_string
         );
 
-        self.reader
+        let query = self
+            .reader
             .query_single_with_args::<Person, (String, String)>(
                 &select_person_query,
                 (String::from("email"), email),
-            )
-            .await
+            );
+
+        match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error selecting person by email: {:#?}", e);
+                panic!()
+            }
+        }
     }
 
     #[instrument(skip(self))]
@@ -159,7 +191,15 @@ impl PersonsRepo {
                 (String::from("email"), email),
             );
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error selecting hash with email: {:#?}", e);
+                panic!()
+            }
+        };
+
+        match response {
             Some(h) => match h.get("pass_hash") {
                 Some(h) => h.to_string(),
                 None => panic!("No person hash found in map"),
@@ -206,25 +246,21 @@ impl PersonsRepo {
             ("id", thing_from_string(&token_id)),
         );
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Errpr selecting refresh token record: {:#?}", e);
+                panic!()
+            }
+        };
+
+        match response {
             Some(t) => t,
             None => panic!("No token found for token_id: {}", token_id),
         }
     }
 
-    /*
-    TODO: things like the below sort of confuse me...
-    creating a token takes multiple queries and then getting the proper
-    return takes some more. I think some of this can be pulled into the
-    service... but what?
-
-    maybe a service function called get_token_record which will handle
-    building the token record out of the various parts.
-
-    need to edit the query to just return the token object instead of only
-    returning the id.
-    */
-    #[instrument(skip(self))]
+    #[instrument(skip(self, tran_conn))]
     pub async fn insert_token_record(&self, person_id: String, tran_conn: &NovaDB) -> TokenRecord {
         let meta = self
             .meta
@@ -254,7 +290,16 @@ impl PersonsRepo {
             2,
         );
 
-        let token_thing = match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                tran_conn.cancel_tran().await;
+                error!("Unable to get token id, cancelling transaction: {:#?}", e);
+                panic!();
+            }
+        };
+
+        let token_thing = match response {
             Some(t) => t,
             None => {
                 tran_conn.cancel_tran().await;
@@ -281,8 +326,8 @@ impl PersonsRepo {
     }
 
     #[instrument(skip(self))]
-    pub async fn soft_delete_token_record(&self, token_id: &String) {
-        let query = self.reader.query_none_with_args(
+    pub async fn soft_delete_token_record(&self, token_id: &String) -> bool {
+        let query = self.writer.query_none_with_args(
             r#"
                 LET $meta_id = (SELECT meta FROM nb_token WHERE id = $token_id);
                 UPDATE $meta_id.meta SET deleted_on = time::now();
@@ -290,6 +335,44 @@ impl PersonsRepo {
             ("token_id", thing_from_string(token_id)),
         );
 
-        query.await
+        match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error deleting token: {:#?}", e);
+                panic!()
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    pub async fn delete_all_sessions_for_person(
+        &self,
+        person_id: String,
+        tran_conn: Option<&NovaDB>,
+    ) -> bool {
+        let conn = match tran_conn {
+            Some(t) => t,
+            None => &PersonsRepo::new().await.writer,
+        };
+
+        let query = conn.query_none_with_args(
+            r#"
+            UPDATE (
+                SELECT meta FROM nb_token WHERE person = $person_id
+            ).meta
+            SET
+                deleted_on = time::now(),
+                deleted_by = $person_id;
+        "#,
+            ("person_id", person_id),
+        );
+
+        match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error deleting all tokens for person: {:#?}", e);
+                panic!()
+            }
+        }
     }
 }

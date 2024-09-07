@@ -41,11 +41,15 @@ impl MetaRepo {
             // and deleted_by properties into strings
             select_meta_string: r#"
                 # potential meta selection string
-                meta,
+                fn::string_id(meta),
                 (
                     SELECT
                         fn::string_id(id) as id,
                         fn::string_id(created_by) as created_by,
+                        modified_on,
+                        (IF !type::is::none(modified_by) THEN fn::string_id(modified_by) END) as modified_by,
+                        deleted_on,
+                        (IF !type::is::none(deleted_by) THEN fn::string_id(deleted_by) END) as deleted_by,
                         *
                     FROM ONLY meta
                     WHERE id = $parent.meta
@@ -67,6 +71,8 @@ impl MetaRepo {
                 SELECT
                     fn::string_id(id) as id,
                     fn::string_id(created_by) as created_by,
+                    modified_on,
+                    deleted_on,
                     *
                 FROM ONLY meta
                 WHERE id = $parent.meta
@@ -76,7 +82,8 @@ impl MetaRepo {
         .to_string()
     }
 
-    #[instrument(skip(self))]
+    // TODO: probably should return Results from the repo layer instead of panicking
+    #[instrument(skip(self, tran_conn))]
     pub async fn insert_meta(
         &self,
         new_meta: InsertMetaArgs,
@@ -101,6 +108,8 @@ impl MetaRepo {
                     SELECT
                         fn::string_id(id) as id,
                         fn::string_id(created_by) as created_by,
+                        modified_on,
+                        deleted_on,
                         *
                     FROM meta
                     WHERE id = $meta_id;
@@ -109,15 +118,29 @@ impl MetaRepo {
             2,
         );
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                println!("=== error creating meta ===");
+                if tran_conn.is_some() {
+                    conn.cancel_tran().await;
+                    info!("transaction canceled")
+                }
+                error!("Error creating meta: {:#?}", e);
+                panic!("Error creating meta: {:#?}", e);
+            }
+        };
+
+        match response {
             Some(m) => m,
             None => {
                 if tran_conn.is_some() {
                     conn.cancel_tran().await;
                     info!("transaction canceled")
                 }
+                info!("=== ERROR ===");
                 error!("No meta returned, potential issue creating meta");
-                panic!();
+                panic!("No meta returned, potential issue creating meta")
             }
         }
     }
@@ -128,11 +151,28 @@ impl MetaRepo {
 
         let meta_thing = thing_from_string(meta_id);
 
-        self.reader
+        let query = self
+            .reader
             .query_single_with_args::<Meta<()>, (&str, Thing)>(
-                "SELECT fn::string_id(id) as id, fn::string_id(created_by) as created_by, * FROM meta WHERE id = $id",
+                r#"
+                    SELECT
+                        fn::string_id(id) as id,
+                        fn::string_id(created_by) as created_by,
+                        modified_on,
+                        deleted_on,
+                        *
+                    FROM meta
+                    WHERE id = $id
+                "#,
                 ("id", meta_thing),
-            )
-            .await
+            );
+
+        match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error selecting meta: {:#?}", e);
+                panic!()
+            }
+        }
     }
 }

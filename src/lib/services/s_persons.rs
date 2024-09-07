@@ -5,7 +5,7 @@ use argon2::{
 use tracing::{info, instrument};
 
 use crate::{
-    constants::Constants,
+    constants::SYSTEM_ID,
     db::nova_db::get_tran_connection,
     models::{
         person::{LogInCreds, Person, SignUpState},
@@ -28,11 +28,7 @@ pub async fn sign_up(mut sign_up_state: SignUpState) -> Person {
 
     PersonsRepo::new()
         .await
-        .insert_person(
-            sign_up_state,
-            Constants::system_thing(),
-            &get_tran_connection().await,
-        )
+        .insert_person(sign_up_state, SYSTEM_ID, &get_tran_connection().await)
         .await
 }
 
@@ -67,10 +63,26 @@ pub async fn log_in_with_creds(creds: LogInCreds) -> Person {
 pub async fn create_refresh_token(person_id: String) -> TokenRecord {
     let tran_conn = get_tran_connection().await;
 
+    let repo = PersonsRepo::new().await;
+
+    // make sure all previous tokens are invalidated before issuing a new one
+    let success = repo
+        .delete_all_sessions_for_person(person_id.clone(), Some(&tran_conn))
+        .await;
+
+    if success {
+        repo.insert_token_record(person_id, &tran_conn).await
+    } else {
+        panic!("Unable to invalidate previous sessions for user {}. Unable to issue new refresh token.", person_id)
+    }
+}
+
+#[instrument]
+pub async fn logout(person: Person) {
     PersonsRepo::new()
         .await
-        .insert_token_record(person_id, &tran_conn)
-        .await
+        .delete_all_sessions_for_person(person.id, None)
+        .await;
 }
 
 #[instrument]
@@ -83,7 +95,7 @@ pub async fn soft_delete_token_record(token_id: String) {
     PersonsRepo::new()
         .await
         .soft_delete_token_record(&token_id)
-        .await
+        .await;
 }
 
 #[instrument]

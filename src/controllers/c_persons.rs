@@ -1,11 +1,10 @@
-use std::{env, time::Duration};
+use std::env;
 
 use axum::{extract::Path, http::StatusCode, response::IntoResponse, Extension, Json};
 use axum_extra::extract::{
     cookie::{Cookie, SameSite},
     CookieJar,
 };
-use chrono::{Days, Utc};
 use jwt_simple::{
     algorithms::{HS256Key, MACLike},
     claims::{Claims, NoCustomClaims},
@@ -18,8 +17,10 @@ use nb_lib::{
     },
     services::s_persons,
 };
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use tracing::{info, instrument};
+
+use crate::constants::{NB_JWT_DURATION, NB_REFRESH_DURATION, NB_REFRESH_KEY, NB_SECRET_KEY};
 
 #[instrument]
 pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse {
@@ -41,12 +42,18 @@ pub async fn login_person(jar: CookieJar, Json(creds): Json<LogInCreds>) -> impl
     let refresh = s_persons::create_refresh_token(person.id.clone()).await;
     let refresh_token = generate_refresh_token(&refresh.id);
 
-    let now = OffsetDateTime::now_utc();
+    let refresh_duration = env::var(NB_REFRESH_DURATION)
+        .expect(format!("cannot find {}", NB_REFRESH_DURATION).as_str())
+        .parse::<i64>()
+        .expect(format!("unable to parse {} into i64", NB_REFRESH_DURATION).as_str());
+
     let jar = jar.add(
-        Cookie::build(("nbRefresh", refresh_token.clone()))
-            .expires(now + Duration::from_secs(60 * 60 * 24))
+        Cookie::build((NB_REFRESH_KEY, refresh_token.clone()))
+            .path("/")
+            .expires(OffsetDateTime::now_utc() + Duration::days(refresh_duration))
+            .http_only(true)
             .secure(false)
-            .http_only(true),
+            .same_site(SameSite::None),
     );
 
     (
@@ -58,9 +65,17 @@ pub async fn login_person(jar: CookieJar, Json(creds): Json<LogInCreds>) -> impl
     )
 }
 
+pub async fn logout_person(jar: CookieJar, person: Extension<Person>) -> impl IntoResponse {
+    let jar = jar.remove(Cookie::from(NB_REFRESH_KEY));
+
+    s_persons::logout(person.0).await;
+
+    (jar, Json(true))
+}
+
 #[instrument]
 pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
-    let nb_refresh = if let Some(cookie) = jar.get("nbRefresh") {
+    let nb_refresh = if let Some(cookie) = jar.get(NB_REFRESH_KEY) {
         cookie.clone().into_owned()
     } else {
         return Err((
@@ -71,7 +86,7 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
 
     let refresh_token = nb_refresh.value();
 
-    let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
+    let secret = env::var(NB_SECRET_KEY).expect(format!("cannot find {}", NB_SECRET_KEY).as_str());
     let key = HS256Key::from_bytes(secret.as_bytes());
 
     let claims = match key.verify_token::<NoCustomClaims>(&refresh_token, None) {
@@ -97,7 +112,9 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
         ));
     };
 
-    let expiry_duration = Utc::now().checked_sub_days(Days::new(2)).expect("");
+    let expiry_duration = OffsetDateTime::now_utc()
+        .checked_sub(Duration::days(2))
+        .expect("Unable to compute expiry duration");
 
     if expiry_duration > token.meta.created_on {
         return Err((StatusCode::UNAUTHORIZED, "Refresh token retired.".into()));
@@ -107,10 +124,16 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
     let refresh_token = generate_refresh_token(&refresh.id);
 
     let jar = jar.remove(nb_refresh);
+
+    let refresh_duration = env::var(NB_REFRESH_DURATION)
+        .expect(format!("cannot find {}", NB_REFRESH_DURATION).as_str())
+        .parse::<i64>()
+        .expect(format!("unable to parse {} into i64", NB_REFRESH_DURATION).as_str());
+
     let jar = jar.add(
-        Cookie::build(("nbRefresh", refresh_token.clone()))
+        Cookie::build((NB_REFRESH_KEY, refresh_token.clone()))
             .http_only(true)
-            .expires(OffsetDateTime::now_utc() + Duration::from_secs(60 * 60 * 24))
+            .expires(OffsetDateTime::now_utc() + Duration::days(refresh_duration))
             .same_site(SameSite::None),
     );
 
@@ -155,18 +178,20 @@ pub async fn get_persons() -> impl IntoResponse {
 
 #[instrument]
 fn generate_token(person: Person) -> String {
-    let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
-    let jwt_duration = env::var("JWT_DURATION_MINUTES").expect("cannot find JWT_DURATION_MINUTES");
+    let secret = env::var(NB_SECRET_KEY).expect(format!("cannot find {}", NB_SECRET_KEY).as_str());
+    let jwt_duration =
+        env::var(NB_JWT_DURATION).expect(format!("cannot find {}", NB_JWT_DURATION).as_str());
 
     let key = HS256Key::from_bytes(secret.as_bytes());
 
-    // TODO: need to only set is_admin to true if i'm the person
-    let custom_claims = CustomClaims { is_admin: true };
+    let custom_claims = CustomClaims {
+        is_admin: person.is_admin,
+    };
 
     let claims = Claims::with_custom_claims(
         custom_claims,
         JwtDuration::from_mins(jwt_duration.parse::<u64>().unwrap()),
-    ) //JwtDuration::from_hours(1)
+    )
     .with_subject(person.id);
 
     match key.authenticate(claims) {
@@ -175,10 +200,11 @@ fn generate_token(person: Person) -> String {
     }
 }
 
-#[instrument] // TODO: need to invalidate any other refresh tokens associated with this person
+#[instrument]
 fn generate_refresh_token(refresh_id: &String) -> String {
-    let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
-    let refresh_duration = env::var("REFRESH_DURATION_DAYS").expect("cannot find NOVA_SECRET");
+    let secret = env::var(NB_SECRET_KEY).expect(format!("cannot find {}", NB_SECRET_KEY).as_str());
+    let refresh_duration = env::var(NB_REFRESH_DURATION)
+        .expect(format!("cannot find {}", NB_REFRESH_DURATION).as_str());
 
     let key = HS256Key::from_bytes(secret.as_bytes());
 

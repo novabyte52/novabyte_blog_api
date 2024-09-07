@@ -1,7 +1,1 @@
-pub struct Constants {}
-
-impl Constants {
-    pub fn system_thing() -> String {
-        String::from("person:01HM3BK88HHTMGMXXEX5V8DZK5")
-    }
-}
+pub const SYSTEM_ID: &str = "person:01J72MQD8NS5NBYVTVKWHRT18D";

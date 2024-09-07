@@ -1,5 +1,6 @@
-use chrono::{DateTime, Utc};
+// use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 use super::meta::Meta;
 
@@ -26,7 +27,8 @@ pub struct PostVersion {
     pub markdown: String,
     pub author: String,
     pub published: Option<bool>,
-    pub at: DateTime<Utc>,
+    #[serde(with = "time::serde::iso8601")]
+    pub at: OffsetDateTime,
     pub meta: Meta<()>,
 }
 
@@ -36,7 +38,8 @@ pub struct Drafted {
     pub r#in: String,
     pub r#out: String,
     pub markdown: String,
-    pub at: DateTime<Utc>,
+    #[serde(with = "time::serde::iso8601")]
+    pub at: OffsetDateTime, // DateTime<Utc>,
     pub meta: Meta<()>,
 }
 

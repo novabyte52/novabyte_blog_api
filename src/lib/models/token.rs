@@ -1,6 +1,7 @@
-use chrono::{DateTime, Utc};
+// use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
+use time::OffsetDateTime;
 
 use super::meta::Meta;
 
@@ -16,8 +17,13 @@ pub struct Token {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenRecord {
     pub created_by: Thing,
-    pub created_on: DateTime<Utc>,
-    pub deleted_on: Option<DateTime<Utc>>,
+
+    #[serde(with = "time::serde::iso8601")]
+    pub created_on: OffsetDateTime, // DateTime<Utc>,
+
+    #[serde(with = "time::serde::iso8601::option")]
+    pub deleted_on: Option<OffsetDateTime>, // Option<DateTime<Utc>>,
+
     pub id: String,
     pub person: String,
     pub meta: Thing,

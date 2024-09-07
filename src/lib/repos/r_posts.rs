@@ -55,7 +55,7 @@ impl PostsRepo {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, tran_conn))]
     pub async fn insert_post(&self, created_by: String, tran_conn: &NovaDB) -> Post {
         info!("r: insert post");
 
@@ -86,15 +86,22 @@ impl PostsRepo {
             &self.meta.select_meta_string
         );
 
-        let query = self
-            .writer
-            .query_single_with_args_specify_result::<Post, (&str, Thing)>(
-                &create_post_query,
-                ("meta", thing_from_string(&meta.id)),
-                2,
-            );
+        let query = tran_conn.query_single_with_args_specify_result::<Post, (&str, Thing)>(
+            &create_post_query,
+            ("meta", thing_from_string(&meta.id)),
+            2,
+        );
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                tran_conn.cancel_tran().await;
+                error!("Error inserting post: {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
             Some(p) => p,
             None => {
                 tran_conn.cancel_tran().await;
@@ -117,7 +124,15 @@ impl PostsRepo {
             .reader
             .query_single_with_args(&select_post_query, ("post_id", thing_from_string(&post_id)));
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error inserting post: {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
             Some(r) => r,
             None => panic!("no post returned"),
         }
@@ -182,7 +197,15 @@ impl PostsRepo {
             .reader
             .query_single_with_args(&select_draft, ("draft_id", thing_from_string(draft_id)));
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error inserting post: {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
             Some(p) => p,
             None => panic!("No draft found for {}!", draft_id),
         }
@@ -220,7 +243,7 @@ impl PostsRepo {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, tran_conn))]
     pub async fn create_draft(
         &self,
         post_id: String,
@@ -238,7 +261,7 @@ impl PostsRepo {
         let drafted_query = format!(
             r#"
                 LET $drafted_id = drafted:ulid();
-                LET $meta_id = SELECT meta FROM post WHERE id = $post_id;
+                LET $meta_id = (SELECT meta FROM ONLY post WHERE id = $post_id LIMIT 1).meta;
 
                 RELATE $person_id->drafted->$post_id
                     SET
@@ -253,7 +276,10 @@ impl PostsRepo {
                     fn::string_id(id) as draft_id,
                     fn::string_id(in) as author,
                     fn::string_id(out) as id,
-                    *,
+                    at,
+                    title,
+                    markdown,
+                    published,
                     {}
                 FROM drafted
                 WHERE id = $drafted_id;
@@ -270,17 +296,29 @@ impl PostsRepo {
                 markdown,
                 published,
             },
-            2,
+            3,
         );
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                if tran_conn.is_some() {
+                    conn.cancel_tran().await;
+                    info!("Cancelling transaction")
+                }
+                error!("Error inserting draft: {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
             Some(p) => p,
             None => {
                 if tran_conn.is_some() {
                     conn.cancel_tran().await;
                     info!("Cancelling transaction")
                 }
-                error!("Issue creating draft for {}", post_id);
+                error!("Error creating draft for {}", post_id);
                 panic!();
             }
         }
@@ -342,13 +380,21 @@ impl PostsRepo {
             .reader
             .query_single_with_args(&select_draft, ("post_id", thing_from_string(&post_id)));
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error selecting draft {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
             Some(p) => p,
             None => panic!("Current draft version not found for {:#?}", post_id),
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, tran_conn))]
     pub async fn publish_new_draft(
         &self,
         post_id: String,
@@ -400,7 +446,19 @@ impl PostsRepo {
             },
         );
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                if tran_conn.is_some() {
+                    conn.cancel_tran().await;
+                    info!("Cancelling transaction")
+                }
+                error!("Error creating published draft {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
             Some(p) => p,
             None => {
                 if tran_conn.is_some() {
@@ -413,7 +471,7 @@ impl PostsRepo {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, tran_conn))]
     pub async fn publish_draft(&self, draft_id: String, tran_conn: &NovaDB) -> Drafted {
         info!("r: publish post");
 
@@ -439,7 +497,16 @@ impl PostsRepo {
             1,
         );
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                tran_conn.cancel_tran().await;
+                error!("Error publishing draft, cancelling transaction {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
             Some(p) => p,
             None => {
                 tran_conn.cancel_tran().await;
@@ -475,9 +542,20 @@ impl PostsRepo {
             1,
         );
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error inserting draft {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
             Some(p) => p,
-            None => panic!("Nothing returned when unpublishing draft..."),
+            None => {
+                error!("Nothing returned when unpublishing draft");
+                panic!()
+            }
         }
     }
 
@@ -511,7 +589,7 @@ impl PostsRepo {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, tran_conn))]
     pub async fn unpublish_drafts_for_post_id(&self, post_id: String, tran_conn: &NovaDB) -> bool {
         info!("r: unpublish_drafts_for_posT_id");
         let query = tran_conn.query_none_with_args(
@@ -523,8 +601,14 @@ impl PostsRepo {
             ("post_id", thing_from_string(&post_id)),
         );
 
-        query.await;
-        true
+        match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                tran_conn.cancel_tran().await;
+                error!("Error unpublishing drafts for post: {:#?}", e);
+                panic!()
+            }
+        }
     }
 
     #[instrument(skip(self))]
@@ -535,9 +619,20 @@ impl PostsRepo {
             ("draft_id", thing_from_string(draft_id)),
         );
 
-        match query.await {
+        let response = match query.await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error inserting draft {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
             Some(id) => id,
-            None => panic!("No post id found for draft: {:#?}", draft_id),
+            None => {
+                error!("No post_id found for draft: {:#?}", draft_id);
+                panic!()
+            }
         }
     }
 

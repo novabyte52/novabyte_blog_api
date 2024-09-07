@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use surrealdb::sql::Thing;
+use tracing::{debug, instrument};
 use ulid::Ulid;
 
 /// Creates a Thing from a borrowed String
@@ -9,7 +10,10 @@ use ulid::Ulid;
 /// when split using a ':'.
 ///
 /// It will panic if the second part of the thing_string isn't a ULID
+#[instrument]
 pub fn thing_from_string(thing_string: &String) -> Thing {
+    println!("converting {} into thing", thing_string);
+    debug!("converting {} into thing", thing_string);
     let split = thing_string.split(":");
 
     if split.clone().count() != 2 {
@@ -19,6 +23,7 @@ pub fn thing_from_string(thing_string: &String) -> Thing {
     let thing_parts: Vec<&str> = split.collect();
 
     // TODO: need to get a list of all table prefixes to check against
+    // if i want to validate the first part of the string, anyway
 
     let ulid = match Ulid::from_str(thing_parts[1]) {
         Ok(u) => u,

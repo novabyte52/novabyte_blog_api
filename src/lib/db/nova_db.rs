@@ -4,6 +4,7 @@ use serde::Serialize;
 use std::fmt::Debug;
 use std::usize;
 use surrealdb::engine::remote::ws::{Client, Ws};
+use surrealdb::Error;
 use surrealdb::{opt::auth::Root, Surreal};
 use tracing::{info, instrument};
 
@@ -72,17 +73,21 @@ impl NovaDB {
         }
     }
 
-    #[instrument(skip(self))]
-    pub async fn query_none_with_args<A: Serialize + Debug>(&self, query: &str, args: A) {
+    #[instrument(skip(self, query))]
+    pub async fn query_none_with_args<A: Serialize + Debug>(
+        &self,
+        query: &str,
+        args: A,
+    ) -> Result<bool, Error> {
         let query = self.novadb.query(query).bind(args);
 
         match query.await {
-            Ok(r) => info!("Query response: {:#?}", r),
-            Err(e) => panic!("Query Error: {}", e),
+            Ok(_r) => Ok(true),
+            Err(e) => Err(e), // panic!("Query Error: {}", e),
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, query))]
     pub async fn query_single<T: DeserializeOwned>(
         &self,
         query: &str,
@@ -91,7 +96,7 @@ impl NovaDB {
 
         let mut response = match query.await {
             Ok(r) => r,
-            Err(e) => panic!("Query Error: {:#?}", e),
+            Err(e) => return Err(e), // panic!("Query Error: {:#?}", e),
         };
 
         match response.take(0) {
@@ -100,26 +105,32 @@ impl NovaDB {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, query))]
     pub async fn query_single_with_args<T: DeserializeOwned, A: Serialize + Debug>(
         &self,
         query: &str,
         args: A,
-    ) -> Option<T> {
+    ) -> Result<Option<T>, Error> {
         let query = self.novadb.query(query).bind(args);
 
         let mut response = match query.await {
             Ok(r) => r,
-            Err(e) => panic!("DB Query Error: {:#?}", e),
+            Err(e) => return Err(e), // panic!("DB Query Error: {:#?}", e),
         };
 
         match response.take(0) {
-            Ok(p) => p,
-            Err(e) => panic!("DB Response error: {:#?}", e),
+            Ok(p) => Ok(p),
+            Err(e) => Err(e), // panic!("DB Response error: {:#?}", e),
         }
     }
 
-    #[instrument(skip(self))]
+    /*
+    TODO: HIGH: when the DB errors and i panic from here i am not given the option
+    in my service to recover from any errors here (and be able to cancel the transaction).
+    instead of panicking here i need to return a result. there are probably a few
+    methods here i need to rewrite...
+    */
+    #[instrument(skip(self, query))]
     pub async fn query_single_with_args_specify_result<
         T: DeserializeOwned,
         A: Serialize + Debug,
@@ -128,23 +139,23 @@ impl NovaDB {
         query: &str,
         args: A,
         result_idx: i8,
-    ) -> Option<T> {
+    ) -> Result<Option<T>, Error> {
         let query = self.novadb.query(query).bind(args);
 
         let mut response = match query.await {
             Ok(r) => r,
-            Err(e) => panic!("Query Error: {:#?}", e),
+            Err(e) => return Err(e), // panic!("Query Error: {:#?}", e),
         };
 
         info!("Response: {:#?}", &response);
 
         match response.take::<Option<T>>(result_idx as usize) {
-            Ok(o) => o,
-            Err(e) => panic!("DB Response error: {:#?}", e),
+            Ok(o) => Ok(o),
+            Err(e) => Err(e), // panic!("DB Response error: {:#?}", e),
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, query))]
     pub async fn query_many<T: DeserializeOwned>(
         &self,
         query: &str,
@@ -162,7 +173,7 @@ impl NovaDB {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, query))]
     pub async fn query_many_with_args<T: DeserializeOwned, A: Serialize + Debug>(
         &self,
         query: &str,
@@ -181,7 +192,7 @@ impl NovaDB {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, query))]
     pub async fn query_many_specify_result<T: DeserializeOwned>(
         &self,
         query: &str,
