@@ -41,7 +41,7 @@ impl MetaRepo {
             // and deleted_by properties into strings
             select_meta_string: r#"
                 # potential meta selection string
-                fn::string_id(meta),
+                meta,
                 (
                     SELECT
                         fn::string_id(id) as id,

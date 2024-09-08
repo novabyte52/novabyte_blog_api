@@ -123,45 +123,6 @@ pub async fn get_current_draft(post_id: String) -> PostVersion {
     PostsRepo::new().await.select_current_draft(post_id).await
 }
 
-// TODO: rename to create_published_draft
-/// Create a new draft that is published for a post.
-///
-/// If the id (a post id in this case) is not present create a new post
-/// and then create a new draft for that post that is published.
-#[instrument]
-pub async fn publish_new_draft(draft: DraftPostArgs, author: String) -> bool {
-    // TODO: make sure there are no other published drafts
-    // for this post before publishing this one
-    let repo = PostsRepo::new().await;
-
-    // if a post id exists publish the new draft and return
-    if let Some(post_id) = draft.id {
-        let post = get_post(post_id).await;
-
-        repo.publish_new_draft(post.id, draft.title, draft.markdown, author, None)
-            .await;
-        return true;
-    };
-
-    // no post id exists so create a post and then publish the new draft
-    let tran_conn = get_tran_connection().await;
-    tran_conn.begin_tran().await;
-
-    let new_post = create_post(author.clone(), Some(&tran_conn)).await;
-
-    repo.publish_new_draft(
-        new_post.id,
-        draft.title,
-        draft.markdown,
-        author,
-        Some(&tran_conn),
-    )
-    .await;
-
-    tran_conn.commit_tran().await;
-    return true;
-}
-
 /// Publish an already existing draft by passing the draft id.
 #[instrument]
 pub async fn publish_draft(draft_id: String) -> bool {

@@ -32,17 +32,6 @@ pub struct PostVersion {
     pub meta: Meta<()>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Drafted {
-    pub id: String,
-    pub r#in: String,
-    pub r#out: String,
-    pub markdown: String,
-    #[serde(with = "time::serde::iso8601")]
-    pub at: OffsetDateTime, // DateTime<Utc>,
-    pub meta: Meta<()>,
-}
-
 // === draft models === //
 
 #[derive(Debug, Deserialize, Clone)]

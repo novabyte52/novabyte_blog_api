@@ -87,7 +87,7 @@ async fn connect_to_db() {
         .expect("Unable to access specified namespace or database.");
 
     // Apply all migrations
-    info!("applying migrations...");
+    info!("applying migrations");
     MigrationRunner::new(&db)
         .up()
         .await
@@ -126,30 +126,30 @@ async fn init_api() -> Router {
         .route("/posts/drafts/:draft_id/publish", delete(unpublish_post))
         .route("/posts/:post_id/drafts", get(get_post_drafts))
         //
-        // admin layer
+        // ^^ admin layer ^^
         .route_layer(from_fn(is_admin))
         //
         // eventual endpoints for profiles, comments, etc. will go in between the authorization check and the admin check
         .route("/persons/:person_id", get(handle_get_person))
         //
-        // authentication layer (all above routes require authentication to access)
+        // ^^ authentication layer ^^
         .route_layer(from_fn(require_authentication))
         //
         .route("/persons/logout", delete(logout_person))
         .route("/persons/refresh", get(refresh_token))
         //
-        // refresh token layer
+        // ^^ refresh token layer ^^
         .route_layer(from_fn(require_refresh_token))
         //
-        // all routes below are anonymous, public and can be accessed by ANYONE
         // anonymous public persons routes
         .route("/persons/login", post(login_person))
         .route("/persons/signup", post(signup_person))
         //
         // anonymous public posts routes
         .route("/posts/published", get(get_published_posts))
+        // ^^ anonymous routes ^^
         //
-        // all routes should stay above the CORS layer
+        // ^^ CORS layer ^^
         .layer(cors)
 }
 
