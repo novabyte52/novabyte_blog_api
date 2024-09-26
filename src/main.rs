@@ -25,7 +25,8 @@ pub mod utils;
 
 use controllers::{
     c_persons::{
-        get_persons, handle_get_person, login_person, logout_person, refresh_token, signup_person,
+        get_persons, handle_check_person_validity, handle_get_person, login_person, logout_person,
+        refresh_token, signup_person,
     },
     c_posts::{
         get_draft, get_drafted_posts, get_post_drafts, get_posts, get_published_posts,
@@ -121,36 +122,37 @@ async fn init_api() -> Router {
         .route("/posts", get(get_posts))
         .route("/posts/drafts", get(get_drafted_posts))
         .route("/posts/drafts", post(handle_create_draft)) // ?publish=bool
-        .route("/posts/drafts/:draft_id", get(get_draft))
         .route("/posts/drafts/:draft_id/publish", post(publish_draft))
         .route("/posts/drafts/:draft_id/publish", delete(unpublish_post))
         .route("/posts/:post_id/drafts", get(get_post_drafts))
         //
-        // ^^ admin layer ^^
         .route_layer(from_fn(is_admin))
+        // ^^ admin layer ^^
         //
         // eventual endpoints for profiles, comments, etc. will go in between the authorization check and the admin check
         .route("/persons/:person_id", get(handle_get_person))
         //
-        // ^^ authentication layer ^^
         .route_layer(from_fn(require_authentication))
+        // ^^ authentication layer ^^
         //
         .route("/persons/logout", delete(logout_person))
         .route("/persons/refresh", get(refresh_token))
         //
-        // ^^ refresh token layer ^^
         .route_layer(from_fn(require_refresh_token))
+        // ^^ refresh token layer ^^
         //
         // anonymous public persons routes
         .route("/persons/login", post(login_person))
         .route("/persons/signup", post(signup_person))
+        .route("/persons/valid", get(handle_check_person_validity))
         //
         // anonymous public posts routes
         .route("/posts/published", get(get_published_posts))
+        .route("/posts/drafts/:draft_id", get(get_draft))
         // ^^ anonymous routes ^^
         //
-        // ^^ CORS layer ^^
         .layer(cors)
+    // ^^ CORS layer ^^
 }
 
 #[instrument(skip(app))]

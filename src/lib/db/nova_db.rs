@@ -124,12 +124,6 @@ impl NovaDB {
         }
     }
 
-    /*
-    TODO: HIGH: when the DB errors and i panic from here i am not given the option
-    in my service to recover from any errors here (and be able to cancel the transaction).
-    instead of panicking here i need to return a result. there are probably a few
-    methods here i need to rewrite...
-    */
     #[instrument(skip(self, query))]
     pub async fn query_single_with_args_specify_result<
         T: DeserializeOwned,
@@ -146,8 +140,6 @@ impl NovaDB {
             Ok(r) => r,
             Err(e) => return Err(e), // panic!("Query Error: {:#?}", e),
         };
-
-        info!("Response: {:#?}", &response);
 
         match response.take::<Option<T>>(result_idx as usize) {
             Ok(o) => Ok(o),

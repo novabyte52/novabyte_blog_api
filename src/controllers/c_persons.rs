@@ -1,6 +1,11 @@
 use std::env;
 
-use axum::{extract::Path, http::StatusCode, response::IntoResponse, Extension, Json};
+use axum::{
+    extract::{Path, Query},
+    http::StatusCode,
+    response::IntoResponse,
+    Extension, Json,
+};
 use axum_extra::extract::{
     cookie::{Cookie, SameSite},
     CookieJar,
@@ -13,7 +18,10 @@ use jwt_simple::{
 use nb_lib::{
     models::{
         custom_claims::CustomClaims,
-        person::{LogInCreds, LoginResponse, Person, RefreshResponse, SignUpCreds, SignUpState},
+        person::{
+            LogInCreds, LoginResponse, Person, PersonCheck, RefreshResponse, SignUpCreds,
+            SignUpState,
+        },
     },
     services::s_persons,
 };
@@ -21,6 +29,14 @@ use time::{Duration, OffsetDateTime};
 use tracing::{info, instrument};
 
 use crate::constants::{NB_JWT_DURATION, NB_REFRESH_DURATION, NB_REFRESH_KEY, NB_SECRET_KEY};
+
+#[instrument]
+pub async fn handle_check_person_validity(
+    Query(person_check): Query<PersonCheck>,
+) -> impl IntoResponse {
+    info!("handling check person validity request...");
+    Json(s_persons::check_person_validity(person_check).await)
+}
 
 #[instrument]
 pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse {

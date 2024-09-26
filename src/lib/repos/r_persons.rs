@@ -6,9 +6,10 @@ use tracing::{error, info, instrument};
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::InsertMetaArgs;
-use crate::models::person::{InsertPersonArgs, Person, SelectPersonArgs, SignUpState};
+use crate::models::person::{InsertPersonArgs, Person, PersonCheck, SelectPersonArgs, SignUpState};
 use crate::models::token::{InsertTokenArgs, Token, TokenRecord};
 use crate::repos::r_meta::MetaRepo;
+use crate::services::s_persons::check_person_validity;
 use crate::utils::thing_from_string;
 
 #[derive(Debug)]
@@ -46,6 +47,75 @@ impl PersonsRepo {
         }
     }
 
+    #[instrument(skip(self))]
+    pub async fn is_unique_email(&self, email: &String) -> bool {
+        let query = self.reader.query_single_with_args::<bool, (&str, &String)>(
+            r#"
+                    IF string::is::email($email) {    
+                        LET $count = (
+                            SELECT
+                                count(email)
+                            FROM ONLY person
+                            WHERE email = $email
+                            LIMIT 1
+                        ).count;
+                        
+                        RETURN $count IS NONE;
+                    } ELSE {
+                        RETURN false;
+                    };
+                "#,
+            ("email", email),
+        );
+
+        let response = match query.await {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Error checking validity of email: {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
+            Some(c) => c,
+            None => false,
+        }
+    }
+
+    #[instrument(skip(self))]
+    pub async fn is_unique_username(&self, username: &String) -> bool {
+        let query = self
+            .reader
+            .query_single_with_args_specify_result::<bool, (&str, &String)>(
+                r#" 
+                    LET $count = (
+                        SELECT
+                            count(username)
+                        FROM ONLY person
+                        WHERE username = $username
+                        LIMIT 1
+                    ).count;
+                    
+                    RETURN $count IS NONE;
+                "#,
+                ("username", username),
+                1,
+            );
+
+        let response = match query.await {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Error checking validity of username: {:#?}", e);
+                panic!();
+            }
+        };
+
+        match response {
+            Some(c) => c,
+            None => false,
+        }
+    }
+
     #[instrument(skip(self, tran_conn))]
     pub async fn insert_person(
         &self,
@@ -57,6 +127,22 @@ impl PersonsRepo {
             Some(ph) => ph,
             None => panic!("Can't create user without the password hash!"),
         };
+
+        let validity = check_person_validity(PersonCheck {
+            email: Some(new_person.email.clone()),
+            username: Some(new_person.username.clone()),
+        })
+        .await;
+
+        if !validity.email || !validity.username {
+            /*
+            TODO: since i do a check on the front end to see if usernames and emails
+            are unique before they can sign up i would suspect someone is trying to
+            fudge the system. at some point i'd like to track that.
+            */
+            error!("email or username invalid");
+            panic!();
+        }
 
         let meta = self
             .meta

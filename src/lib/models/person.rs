@@ -28,6 +28,20 @@ pub struct SignUpCreds {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct PersonCheck {
+    pub email: Option<String>,    // Option<String>,
+    pub username: Option<String>, // Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PersonCheckResponse {
+    pub email: bool,
+    pub username: bool,
+}
+
+// === //
+
+#[derive(Debug, Deserialize)]
 pub struct PostPerson {
     pub username: String,
     pub email: String,

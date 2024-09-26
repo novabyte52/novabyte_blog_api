@@ -8,11 +8,31 @@ use crate::{
     constants::SYSTEM_ID,
     db::nova_db::get_tran_connection,
     models::{
-        person::{LogInCreds, Person, SignUpState},
+        person::{LogInCreds, Person, PersonCheck, PersonCheckResponse, SignUpState},
         token::{Token, TokenRecord},
     },
     repos::r_persons::PersonsRepo,
 };
+
+#[instrument]
+pub async fn check_person_validity(check: PersonCheck) -> PersonCheckResponse {
+    let mut check_response = PersonCheckResponse {
+        email: false,
+        username: false,
+    };
+
+    let repo = PersonsRepo::new().await;
+
+    if let Some(email) = &check.email {
+        check_response.email = repo.is_unique_email(email).await;
+    }
+
+    if let Some(username) = &check.username {
+        check_response.username = repo.is_unique_username(username).await;
+    }
+
+    check_response
+}
 
 #[instrument]
 pub async fn sign_up(mut sign_up_state: SignUpState) -> Person {
