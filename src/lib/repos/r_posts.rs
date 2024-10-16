@@ -185,6 +185,7 @@ impl PostsRepo {
                     at,
                     fn::string_id(in) as author,
                     published,
+                    image,
                     {}
                 FROM drafted
                 WHERE id = $draft_id
@@ -225,6 +226,7 @@ impl PostsRepo {
                     at,
                     fn::string_id(in) as author,
                     published,
+                    image,
                     {}
                 FROM drafted
                 WHERE out = $post_id
@@ -251,6 +253,7 @@ impl PostsRepo {
         markdown: String,
         person_id: String,
         published: bool,
+        image: String,
         tran_conn: Option<&NovaDB>,
     ) -> PostVersion {
         let conn = match tran_conn {
@@ -270,6 +273,7 @@ impl PostsRepo {
                         markdown = $markdown,
                         published = $published,
                         at = time::now(),
+                        image = $image,
                         meta = $meta_id;
                 
                 SELECT
@@ -280,6 +284,7 @@ impl PostsRepo {
                     title,
                     markdown,
                     published,
+                    image,
                     {}
                 FROM drafted
                 WHERE id = $drafted_id;
@@ -338,6 +343,7 @@ impl PostsRepo {
                     at,
                     fn::string_id(in) as author,
                     published,
+                    image,
                     {}
                 FROM drafted
                 WHERE published = false
@@ -366,6 +372,7 @@ impl PostsRepo {
                     at,
                     fn::string_id(in) as author,
                     published,
+                    image,
                     {}
                 FROM drafted
                 WHERE out = $post_id
@@ -411,6 +418,7 @@ impl PostsRepo {
                     title,
                     markdown,
                     published,
+                    image,
                     {}
                 FROM drafted
                 WHERE id = $draft_id;
@@ -459,6 +467,7 @@ impl PostsRepo {
                     title,
                     markdown,
                     published,
+                    image,
                     {}
                 FROM drafted
                 WHERE id = $draft_id;
@@ -503,6 +512,7 @@ impl PostsRepo {
                     at,
                     fn::string_id(in) as author,
                     published,
+                    image,
                     {}
                 FROM drafted
                 WHERE published = true

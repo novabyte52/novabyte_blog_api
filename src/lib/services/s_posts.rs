@@ -78,6 +78,7 @@ pub async fn create_draft(draft: DraftPostArgs, author_id: String) -> PostVersio
                 draft.markdown,
                 author_id.clone(),
                 draft.published,
+                draft.image,
                 None,
             )
             .await;
@@ -96,6 +97,7 @@ pub async fn create_draft(draft: DraftPostArgs, author_id: String) -> PostVersio
             draft.markdown,
             author_id,
             draft.published,
+            draft.image,
             Some(&tran_conn),
         )
         .await;

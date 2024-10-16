@@ -29,6 +29,7 @@ pub struct PostVersion {
     pub published: Option<bool>,
     #[serde(with = "time::serde::iso8601")]
     pub at: OffsetDateTime,
+    pub image: String,
     pub meta: Meta<()>,
 }
 
@@ -40,4 +41,5 @@ pub struct DraftPostArgs {
     pub title: String,
     pub markdown: String,
     pub published: bool,
+    pub image: String,
 }
