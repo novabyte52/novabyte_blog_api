@@ -109,7 +109,9 @@ async fn connect_to_db() {
 async fn init_api() -> Router {
     // configre cors
     let cors = CorsLayer::new()
+        // TODO: make allow origin an env var
         .allow_origin("http://localhost:9000".parse::<HeaderValue>().unwrap())
+        .allow_origin("http://localhost:9100".parse::<HeaderValue>().unwrap())
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
         .allow_headers([AUTHORIZATION, CONTENT_TYPE])
         .allow_credentials(true);
