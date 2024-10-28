@@ -11,7 +11,7 @@ use crate::utils::thing_from_string;
 
 use super::r_meta::MetaRepo;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PostsRepo {
     reader: NovaDB,
     writer: NovaDB,
@@ -25,33 +25,20 @@ struct DraftedArgs {
     title: String,
     markdown: String,
     published: bool,
+    image: String,
 }
 
 impl PostsRepo {
     #[instrument]
-    pub async fn new() -> Self {
-        let reader = NovaDB::new(SurrealDBConnection {
-            address: "127.0.0.1:52000",
-            username: "root",
-            password: "root",
-            namespace: "test",
-            database: "novabyte.blog",
-        })
-        .await;
+    pub async fn new(conn: &SurrealDBConnection) -> Self {
+        let reader = NovaDB::new(conn).await;
 
-        let writer = NovaDB::new(SurrealDBConnection {
-            address: "127.0.0.1:52000",
-            username: "root",
-            password: "root",
-            namespace: "test",
-            database: "novabyte.blog",
-        })
-        .await;
+        let writer = NovaDB::new(conn).await;
 
         Self {
             reader,
             writer,
-            meta: MetaRepo::new().await,
+            meta: MetaRepo::new(conn).await,
         }
     }
 
@@ -186,6 +173,7 @@ impl PostsRepo {
                     fn::string_id(in) as author,
                     published,
                     image,
+                    visits,
                     {}
                 FROM drafted
                 WHERE id = $draft_id
@@ -227,6 +215,7 @@ impl PostsRepo {
                     fn::string_id(in) as author,
                     published,
                     image,
+                    visits,
                     {}
                 FROM drafted
                 WHERE out = $post_id
@@ -274,6 +263,7 @@ impl PostsRepo {
                         published = $published,
                         at = time::now(),
                         image = $image,
+                        visits = 0,
                         meta = $meta_id;
                 
                 SELECT
@@ -285,6 +275,7 @@ impl PostsRepo {
                     markdown,
                     published,
                     image,
+                    visits,
                     {}
                 FROM drafted
                 WHERE id = $drafted_id;
@@ -300,6 +291,7 @@ impl PostsRepo {
                 title,
                 markdown,
                 published,
+                image,
             },
             3,
         );
@@ -344,6 +336,7 @@ impl PostsRepo {
                     fn::string_id(in) as author,
                     published,
                     image,
+                    visits,
                     {}
                 FROM drafted
                 WHERE published = false
@@ -373,6 +366,7 @@ impl PostsRepo {
                     fn::string_id(in) as author,
                     published,
                     image,
+                    visits,
                     {}
                 FROM drafted
                 WHERE out = $post_id
@@ -419,6 +413,7 @@ impl PostsRepo {
                     markdown,
                     published,
                     image,
+                    visits,
                     {}
                 FROM drafted
                 WHERE id = $draft_id;
@@ -468,6 +463,7 @@ impl PostsRepo {
                     markdown,
                     published,
                     image,
+                    visits,
                     {}
                 FROM drafted
                 WHERE id = $draft_id;
@@ -513,6 +509,7 @@ impl PostsRepo {
                     fn::string_id(in) as author,
                     published,
                     image,
+                    visits,
                     {}
                 FROM drafted
                 WHERE published = true

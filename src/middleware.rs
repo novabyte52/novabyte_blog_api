@@ -1,27 +1,63 @@
 use std::env;
 
 use axum::{
-    extract::Request,
+    extract::{Request, State},
     http::{header, StatusCode},
     middleware::Next,
     response::IntoResponse,
 };
-use axum_extra::extract::CookieJar;
+use axum_extra::extract::cookie::Cookie;
 use jwt_simple::{
     algorithms::{HS256Key, MACLike},
     claims::{JWTClaims, NoCustomClaims},
 };
 use nb_lib::{
+    db::SurrealDBConnection,
     models::{custom_claims::CustomClaims, person::Person},
-    services::s_persons::{self, get_person},
+    services::{s_persons::PersonsService, s_posts::PostsService},
 };
 use time::OffsetDateTime;
 use tracing::{debug, instrument, trace};
 
 use crate::{
-    constants::NB_REFRESH_KEY,
+    constants::{
+        NB_DB_ADDRESS, NB_DB_NAME, NB_DB_NAMESPACE, NB_DB_PSWD, NB_DB_USER, NB_REFRESH_KEY,
+    },
     errors::{NovaWebError, NovaWebErrorId},
+    utils::get_env,
 };
+
+#[derive(Debug, Clone)]
+pub struct NbBlogServices {
+    pub posts: PostsService,
+    pub persons: PersonsService,
+}
+
+#[instrument(skip(req, next))]
+pub async fn init_services(mut req: Request, next: Next) -> impl IntoResponse {
+    let addr = get_env::<String>(NB_DB_ADDRESS);
+    let user = get_env::<String>(NB_DB_USER);
+    let pass = get_env::<String>(NB_DB_PSWD);
+    let namespace = get_env::<String>(NB_DB_NAMESPACE);
+    let db = get_env::<String>(NB_DB_NAME);
+
+    let conn = SurrealDBConnection {
+        address: addr,
+        username: user,
+        password: pass,
+        namespace: namespace,
+        database: db,
+    };
+
+    let services = NbBlogServices {
+        posts: PostsService::new(conn.clone()).await,
+        persons: PersonsService::new(conn.clone()).await,
+    };
+
+    req.extensions_mut().insert(services);
+
+    next.run(req).await
+}
 
 #[instrument(skip(req, next))]
 pub async fn is_admin(req: Request, next: Next) -> impl IntoResponse {
@@ -38,7 +74,11 @@ pub async fn is_admin(req: Request, next: Next) -> impl IntoResponse {
 }
 
 #[instrument(skip(req, next))]
-pub async fn require_authentication(mut req: Request, next: Next) -> impl IntoResponse {
+pub async fn require_authentication(
+    State(services): State<NbBlogServices>,
+    mut req: Request,
+    next: Next,
+) -> impl IntoResponse {
     let auth_header = match get_authorization_header(&req) {
         Ok(t) => t,
         Err(e) => {
@@ -84,7 +124,7 @@ pub async fn require_authentication(mut req: Request, next: Next) -> impl IntoRe
 
     let person_id = claims.subject.expect("Unable to find subject claim");
 
-    if let Some(current_person) = get_person(person_id).await {
+    if let Some(current_person) = services.persons.get_person(person_id).await {
         // insert the current user into a request extension so the handler can extract it
         req.extensions_mut().insert(current_person);
 
@@ -100,9 +140,9 @@ pub async fn require_authentication(mut req: Request, next: Next) -> impl IntoRe
     }
 }
 
-#[instrument(skip(jar, req, next))]
+#[instrument(skip(services, req, next))]
 pub async fn require_refresh_token(
-    jar: CookieJar,
+    State(services): State<NbBlogServices>,
     mut req: Request,
     next: Next,
 ) -> impl IntoResponse {
@@ -121,51 +161,73 @@ pub async fn require_refresh_token(
         return Ok(next.run(req).await);
     };
 
-    if let Some(cookie) = jar.get(NB_REFRESH_KEY) {
-        let refresh_token = String::from(cookie.value_trimmed());
+    if let Some(cookie_header) = req.headers().get("cookie") {
+        let raw_jar = cookie_header.to_str().expect("");
+        let mut jar = Cookie::split_parse_encoded(raw_jar);
 
-        // verify token against secret key
-        let claims = match verify_refresh_token(&refresh_token) {
-            Ok(t) => t,
-            Err(e) => {
-                println!("{}", e);
+        if let Some(Ok(cookie)) = jar.find(|c| c.as_ref().is_ok_and(|v| v.name() == NB_REFRESH_KEY))
+        {
+            println!("nb refresh cookie: {}", &cookie);
+            let refresh_token = String::from(cookie.value_trimmed());
+
+            // verify token against secret key
+            let claims = match verify_refresh_token(&refresh_token) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("{}", e);
+
+                    if format!("{}", e) == "Token has expired" {
+                        // TODO: when the token is created store the signed version so i can compare here
+                        // so if there is some issue, like the token is expired, i can find who it is associated with
+                        // and invalidate all their refresh tokens.
+
+                        return Err((
+                            StatusCode::UNAUTHORIZED,
+                            NovaWebError {
+                                id: NovaWebErrorId::UnverifiableToken,
+                                message: "Refresh token expired.".into(),
+                            },
+                        ));
+                    }
+
+                    return Err((
+                        StatusCode::UNAUTHORIZED,
+                        NovaWebError {
+                            id: NovaWebErrorId::UnverifiableToken,
+                            message: "Unable to verify token.".into(),
+                        },
+                    ));
+                }
+            };
+
+            let refresh_id = claims.subject.expect("Unable to find subject claim.");
+
+            let refresh = services.persons.get_token_record(refresh_id).await;
+
+            if let Some(current_person) = services.persons.get_person(refresh.person).await {
+                // insert the current user into a request extension so the handler can extract it
+                req.extensions_mut().insert(current_person);
+
+                return Ok(next.run(req).await);
+            } else {
                 return Err((
-                    StatusCode::UNAUTHORIZED,
+                    StatusCode::NOT_FOUND,
                     NovaWebError {
-                        id: NovaWebErrorId::UnverifiableToken,
-                        message: "Unable to verify token.".into(),
+                        id: NovaWebErrorId::NotFound,
+                        message: "Unable to find subject of token.".into(),
                     },
                 ));
             }
-        };
-
-        let refresh_id = claims.subject.expect("Unable to find subject claim.");
-
-        let refresh = s_persons::get_token_record(refresh_id).await;
-
-        if let Some(current_person) = get_person(refresh.person).await {
-            // insert the current user into a request extension so the handler can extract it
-            req.extensions_mut().insert(current_person);
-
-            return Ok(next.run(req).await);
-        } else {
-            return Err((
-                StatusCode::NOT_FOUND,
-                NovaWebError {
-                    id: NovaWebErrorId::NotFound,
-                    message: "Unable to find subject of token.".into(),
-                },
-            ));
         }
-    } else {
-        Err((
-            StatusCode::BAD_REQUEST,
-            NovaWebError {
-                id: NovaWebErrorId::MissingRefreshToken,
-                message: "Missing refresh token.".into(),
-            },
-        ))
     }
+
+    Err((
+        StatusCode::BAD_REQUEST,
+        NovaWebError {
+            id: NovaWebErrorId::MissingRefreshToken,
+            message: "Missing refresh token.".into(),
+        },
+    ))
 }
 
 fn get_authorization_header(req: &Request) -> Result<String, String> {

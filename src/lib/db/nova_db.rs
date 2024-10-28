@@ -3,31 +3,24 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fmt::Debug;
 use std::usize;
-use surrealdb::engine::remote::ws::{Client, Ws};
+use surrealdb::engine::any::{connect, Any};
 use surrealdb::Error;
 use surrealdb::{opt::auth::Root, Surreal};
 use tracing::{info, instrument};
 
 #[instrument]
-pub async fn get_tran_connection() -> NovaDB {
-    NovaDB::new(SurrealDBConnection {
-        address: "127.0.0.1:52000",
-        username: "root",
-        password: "root",
-        namespace: "test",
-        database: "novabyte.blog",
-    })
-    .await
+pub async fn get_tran_connection(conn: &SurrealDBConnection) -> NovaDB {
+    NovaDB::new(conn).await
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NovaDB {
-    pub novadb: Surreal<Client>,
+    pub novadb: Surreal<Any>,
 }
 
 impl NovaDB {
     #[instrument]
-    pub async fn new(conn: SurrealDBConnection<'_>) -> Self {
+    pub async fn new(conn: &SurrealDBConnection) -> Self {
         let SurrealDBConnection {
             address,
             username,
@@ -36,7 +29,7 @@ impl NovaDB {
             database,
         } = conn;
 
-        let db = Surreal::new::<Ws>(address).await.unwrap();
+        let db = connect(address).await.unwrap();
         db.signin(Root { username, password }).await.unwrap();
         db.use_ns(namespace).use_db(database).await.unwrap();
 
@@ -74,7 +67,7 @@ impl NovaDB {
     }
 
     #[instrument(skip(self, query))]
-    pub async fn query_none_with_args<A: Serialize + Debug>(
+    pub async fn query_none_with_args<A: Serialize + Debug + 'static>(
         &self,
         query: &str,
         args: A,
@@ -106,7 +99,7 @@ impl NovaDB {
     }
 
     #[instrument(skip(self, query))]
-    pub async fn query_single_with_args<T: DeserializeOwned, A: Serialize + Debug>(
+    pub async fn query_single_with_args<T: DeserializeOwned, A: Serialize + Debug + 'static>(
         &self,
         query: &str,
         args: A,
@@ -127,7 +120,7 @@ impl NovaDB {
     #[instrument(skip(self, query))]
     pub async fn query_single_with_args_specify_result<
         T: DeserializeOwned,
-        A: Serialize + Debug,
+        A: Serialize + Debug + 'static,
     >(
         &self,
         query: &str,
@@ -166,7 +159,7 @@ impl NovaDB {
     }
 
     #[instrument(skip(self, query))]
-    pub async fn query_many_with_args<T: DeserializeOwned, A: Serialize + Debug>(
+    pub async fn query_many_with_args<T: DeserializeOwned, A: Serialize + Debug + 'static>(
         &self,
         query: &str,
         args: A,

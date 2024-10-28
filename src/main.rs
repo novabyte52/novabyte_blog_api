@@ -1,21 +1,29 @@
+use std::net::SocketAddr;
+
 use axum::{
     http::{
         header::{AUTHORIZATION, CONTENT_TYPE},
         HeaderValue, Method,
     },
-    middleware::from_fn,
+    middleware::{from_fn, from_fn_with_state},
     routing::{delete, get, post},
     Router,
 };
-use constants::{NB_DB_ADDRESS, NB_DB_NAME, NB_DB_NAMESPACE, NB_DB_PSWD, NB_DB_USER};
-use std::net::SocketAddr;
+use constants::{
+    NB_ALLOWED_ORIGINS, NB_DB_ADDRESS, NB_DB_NAME, NB_DB_NAMESPACE, NB_DB_PSWD, NB_DB_USER,
+    NB_SERVER_ADDRESS,
+};
+use include_dir::include_dir;
+use nb_lib::{
+    db::SurrealDBConnection,
+    services::{s_persons::PersonsService, s_posts::PostsService},
+};
 use surrealdb::{engine::any::connect, opt::auth::Root};
 use surrealdb_migrations::MigrationRunner;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tracing::{debug, info, instrument, trace};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use utils::get_env;
 
 pub mod constants;
 pub mod controllers;
@@ -30,10 +38,11 @@ use controllers::{
     },
     c_posts::{
         get_draft, get_drafted_posts, get_post_drafts, get_posts, get_published_posts,
-        handle_create_draft, publish_draft, unpublish_post,
+        handle_create_draft, handle_get_random_post, publish_draft, unpublish_post,
     },
 };
-use middleware::{is_admin, require_authentication, require_refresh_token};
+use middleware::{is_admin, require_authentication, require_refresh_token, NbBlogServices};
+use utils::get_env;
 
 #[instrument]
 #[tokio::main]
@@ -89,7 +98,10 @@ async fn connect_to_db() {
 
     // Apply all migrations
     info!("applying migrations");
+
+    let mig_dir = include_dir!("$CARGO_MANIFEST_DIR/src/lib/db");
     MigrationRunner::new(&db)
+        .load_files(&mig_dir)
         .up()
         .await
         .expect("Failed to apply migrations");
@@ -105,16 +117,28 @@ async fn connect_to_db() {
     debug!("applied migrations: {:#?}", migrations_applied);
 }
 
-#[instrument]
+// #[instrument]
 async fn init_api() -> Router {
+    let origins_raw: String = get_env(NB_ALLOWED_ORIGINS);
+    println!("allowed origins raw val: {}", &origins_raw);
+    let origins: Vec<HeaderValue> = origins_raw
+        .split(",")
+        .map(|o| {
+            String::from(o)
+                .parse()
+                .expect("Unable to parse origin value.")
+        })
+        .collect();
+
     // configre cors
     let cors = CorsLayer::new()
         // TODO: make allow origin an env var
-        .allow_origin("http://localhost:9000".parse::<HeaderValue>().unwrap())
-        .allow_origin("http://localhost:9100".parse::<HeaderValue>().unwrap())
+        .allow_origin(origins)
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
         .allow_headers([AUTHORIZATION, CONTENT_TYPE])
         .allow_credentials(true);
+
+    let state = init_services().await;
 
     Router::new()
         // admin persons routes
@@ -128,19 +152,20 @@ async fn init_api() -> Router {
         .route("/posts/drafts/:draft_id/publish", delete(unpublish_post))
         .route("/posts/:post_id/drafts", get(get_post_drafts))
         //
-        .route_layer(from_fn(is_admin))
+        .layer(from_fn(is_admin))
         // ^^ admin layer ^^
         //
         // eventual endpoints for profiles, comments, etc. will go in between the authorization check and the admin check
         .route("/persons/:person_id", get(handle_get_person))
         //
-        .route_layer(from_fn(require_authentication))
+        .layer(from_fn_with_state(state.clone(), require_authentication))
         // ^^ authentication layer ^^
         //
         .route("/persons/logout", delete(logout_person))
         .route("/persons/refresh", get(refresh_token))
         //
-        .route_layer(from_fn(require_refresh_token))
+        // .layer(from_fn(require_refresh_token))
+        .layer(from_fn_with_state(state.clone(), require_refresh_token))
         // ^^ refresh token layer ^^
         //
         // anonymous public persons routes
@@ -149,18 +174,49 @@ async fn init_api() -> Router {
         .route("/persons/valid", get(handle_check_person_validity))
         //
         // anonymous public posts routes
-        .route("/posts/published", get(get_published_posts))
         .route("/posts/drafts/:draft_id", get(get_draft))
+        .route("/posts/random", get(handle_get_random_post))
+        .route("/posts/published", get(get_published_posts))
         // ^^ anonymous routes ^^
         //
         .layer(cors)
+        // TODO: double check and make sure that injecting the state here doesn't give it to the middleware, too
+        .with_state(state)
     // ^^ CORS layer ^^
+}
+
+async fn init_services() -> NbBlogServices {
+    let addr = get_env::<String>(NB_DB_ADDRESS);
+    let user = get_env::<String>(NB_DB_USER);
+    let pass = get_env::<String>(NB_DB_PSWD);
+    let namespace = get_env::<String>(NB_DB_NAMESPACE);
+    let db = get_env::<String>(NB_DB_NAME);
+
+    let conn = SurrealDBConnection {
+        address: addr,
+        username: user,
+        password: pass,
+        namespace: namespace,
+        database: db,
+    };
+
+    NbBlogServices {
+        posts: PostsService::new(conn.clone()).await,
+        persons: PersonsService::new(conn.clone()).await,
+    }
 }
 
 #[instrument(skip(app))]
 async fn serve(app: Router, port: u16) {
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::new(
+        get_env::<String>(NB_SERVER_ADDRESS)
+            .parse()
+            .expect("Invalid server address"),
+        port,
+    );
+
     let listener = TcpListener::bind(addr).await.unwrap();
+
     info!("listening on {}", addr);
     axum::serve(listener, app).await.unwrap();
 }

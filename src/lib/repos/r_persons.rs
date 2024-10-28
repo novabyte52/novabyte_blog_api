@@ -6,13 +6,14 @@ use tracing::{error, info, instrument};
 use crate::db::nova_db::NovaDB;
 use crate::db::SurrealDBConnection;
 use crate::models::meta::InsertMetaArgs;
-use crate::models::person::{InsertPersonArgs, Person, PersonCheck, SelectPersonArgs, SignUpState};
+use crate::models::person::{
+    InsertPersonArgs, Person, PersonCheck, PersonCheckResponse, SelectPersonArgs, SignUpState,
+};
 use crate::models::token::{InsertTokenArgs, Token, TokenRecord};
 use crate::repos::r_meta::MetaRepo;
-use crate::services::s_persons::check_person_validity;
 use crate::utils::thing_from_string;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PersonsRepo {
     reader: NovaDB,
     writer: NovaDB,
@@ -21,35 +22,21 @@ pub struct PersonsRepo {
 
 impl PersonsRepo {
     #[instrument]
-    pub async fn new() -> Self {
-        let reader = NovaDB::new(SurrealDBConnection {
-            address: "127.0.0.1:52000",
-            username: "root",
-            password: "root",
-            namespace: "test",
-            database: "novabyte.blog",
-        })
-        .await;
+    pub async fn new(conn: &SurrealDBConnection) -> Self {
+        let reader = NovaDB::new(conn).await;
 
-        let writer = NovaDB::new(SurrealDBConnection {
-            address: "127.0.0.1:52000",
-            username: "root",
-            password: "root",
-            namespace: "test",
-            database: "novabyte.blog",
-        })
-        .await;
+        let writer = NovaDB::new(conn).await;
 
         Self {
             reader,
-            writer: writer,
-            meta: MetaRepo::new().await,
+            writer,
+            meta: MetaRepo::new(conn).await,
         }
     }
 
     #[instrument(skip(self))]
-    pub async fn is_unique_email(&self, email: &String) -> bool {
-        let query = self.reader.query_single_with_args::<bool, (&str, &String)>(
+    pub async fn is_unique_email<'b>(&self, email: &'b String) -> bool {
+        let query = self.reader.query_single_with_args::<bool, (&str, String)>(
             r#"
                     IF string::is::email($email) {    
                         LET $count = (
@@ -65,7 +52,7 @@ impl PersonsRepo {
                         RETURN false;
                     };
                 "#,
-            ("email", email),
+            ("email", email.clone()),
         );
 
         let response = match query.await {
@@ -86,7 +73,7 @@ impl PersonsRepo {
     pub async fn is_unique_username(&self, username: &String) -> bool {
         let query = self
             .reader
-            .query_single_with_args_specify_result::<bool, (&str, &String)>(
+            .query_single_with_args_specify_result::<bool, (&str, String)>(
                 r#" 
                     LET $count = (
                         SELECT
@@ -98,7 +85,7 @@ impl PersonsRepo {
                     
                     RETURN $count IS NONE;
                 "#,
-                ("username", username),
+                ("username", username.clone()),
                 1,
             );
 
@@ -128,11 +115,12 @@ impl PersonsRepo {
             None => panic!("Can't create user without the password hash!"),
         };
 
-        let validity = check_person_validity(PersonCheck {
-            email: Some(new_person.email.clone()),
-            username: Some(new_person.username.clone()),
-        })
-        .await;
+        let validity = self
+            .is_person_unique(PersonCheck {
+                email: Some(new_person.email.clone()),
+                username: Some(new_person.username.clone()),
+            })
+            .await;
 
         if !validity.email || !validity.username {
             /*
@@ -201,6 +189,23 @@ impl PersonsRepo {
             Some(p) => p,
             None => panic!("No person returned, potential issue creating person"),
         }
+    }
+
+    pub async fn is_person_unique(&self, check: PersonCheck) -> PersonCheckResponse {
+        let mut check_response = PersonCheckResponse {
+            email: false,
+            username: false,
+        };
+
+        if let Some(email) = &check.email {
+            check_response.email = self.is_unique_email(email).await;
+        };
+
+        if let Some(username) = &check.username {
+            check_response.username = self.is_unique_username(username).await;
+        };
+
+        check_response
     }
 
     #[instrument(skip(self))]
@@ -438,7 +443,7 @@ impl PersonsRepo {
     ) -> bool {
         let conn = match tran_conn {
             Some(t) => t,
-            None => &PersonsRepo::new().await.writer,
+            None => &self.writer,
         };
 
         let query = conn.query_none_with_args(

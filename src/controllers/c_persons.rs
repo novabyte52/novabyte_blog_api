@@ -1,7 +1,7 @@
 use std::env;
 
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Extension, Json,
@@ -15,47 +15,59 @@ use jwt_simple::{
     claims::{Claims, NoCustomClaims},
     reexports::coarsetime::Duration as JwtDuration,
 };
-use nb_lib::{
-    models::{
-        custom_claims::CustomClaims,
-        person::{
-            LogInCreds, LoginResponse, Person, PersonCheck, RefreshResponse, SignUpCreds,
-            SignUpState,
-        },
+use nb_lib::models::{
+    custom_claims::CustomClaims,
+    person::{
+        LogInCreds, LoginResponse, Person, PersonCheck, RefreshResponse, SignUpCreds, SignUpState,
     },
-    services::s_persons,
 };
 use time::{Duration, OffsetDateTime};
 use tracing::{info, instrument};
 
-use crate::constants::{NB_JWT_DURATION, NB_REFRESH_DURATION, NB_REFRESH_KEY, NB_SECRET_KEY};
+use crate::{
+    constants::{NB_JWT_DURATION, NB_REFRESH_DURATION, NB_REFRESH_KEY, NB_SECRET_KEY},
+    middleware::NbBlogServices,
+};
 
 #[instrument]
 pub async fn handle_check_person_validity(
+    State(services): State<NbBlogServices>,
     Query(person_check): Query<PersonCheck>,
 ) -> impl IntoResponse {
     info!("handling check person validity request...");
-    Json(s_persons::check_person_validity(person_check).await)
+    Json(services.persons.check_person_validity(person_check).await)
 }
 
 #[instrument]
-pub async fn signup_person(Json(creds): Json<SignUpCreds>) -> impl IntoResponse {
-    let new_person = s_persons::sign_up(SignUpState {
-        username: creds.username,
-        email: creds.email,
-        password: creds.password,
-        pass_hash: None,
-    })
-    .await;
+pub async fn signup_person(
+    State(services): State<NbBlogServices>,
+    Json(creds): Json<SignUpCreds>,
+) -> impl IntoResponse {
+    let new_person = services
+        .persons
+        .sign_up(SignUpState {
+            username: creds.username,
+            email: creds.email,
+            password: creds.password,
+            pass_hash: None,
+        })
+        .await;
 
     Json(new_person)
 }
 
 #[instrument]
-pub async fn login_person(jar: CookieJar, Json(creds): Json<LogInCreds>) -> impl IntoResponse {
-    let person = s_persons::log_in_with_creds(creds).await;
+pub async fn login_person(
+    jar: CookieJar,
+    State(services): State<NbBlogServices>,
+    Json(creds): Json<LogInCreds>,
+) -> impl IntoResponse {
+    let person = services.persons.log_in_with_creds(creds).await;
 
-    let refresh = s_persons::create_refresh_token(person.id.clone()).await;
+    let refresh = services
+        .persons
+        .create_refresh_token(person.id.clone())
+        .await;
     let refresh_token = generate_refresh_token(&refresh.id);
 
     let refresh_duration = env::var(NB_REFRESH_DURATION)
@@ -81,16 +93,23 @@ pub async fn login_person(jar: CookieJar, Json(creds): Json<LogInCreds>) -> impl
     )
 }
 
-pub async fn logout_person(jar: CookieJar, person: Extension<Person>) -> impl IntoResponse {
+pub async fn logout_person(
+    jar: CookieJar,
+    State(services): State<NbBlogServices>,
+    person: Extension<Person>,
+) -> impl IntoResponse {
     let jar = jar.remove(Cookie::from(NB_REFRESH_KEY));
 
-    s_persons::logout(person.0).await;
+    services.persons.logout(person.0).await;
 
     (jar, Json(true))
 }
 
 #[instrument]
-pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
+pub async fn refresh_token(
+    jar: CookieJar,
+    State(services): State<NbBlogServices>,
+) -> impl IntoResponse {
     let nb_refresh = if let Some(cookie) = jar.get(NB_REFRESH_KEY) {
         cookie.clone().into_owned()
     } else {
@@ -117,16 +136,17 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
 
     let token_id = sub;
 
-    let token = s_persons::get_token_record(token_id).await;
-    s_persons::soft_delete_token_record(token.id).await;
-    let current_person = if let Some(person) = s_persons::get_person(token.person.clone()).await {
-        person
-    } else {
-        return Err((
-            StatusCode::NOT_FOUND,
-            "Could not find person for refresh token.".into(),
-        ));
-    };
+    let token = services.persons.get_token_record(token_id).await;
+    services.persons.soft_delete_token_record(token.id).await;
+    let current_person =
+        if let Some(person) = services.persons.get_person(token.person.clone()).await {
+            person
+        } else {
+            return Err((
+                StatusCode::NOT_FOUND,
+                "Could not find person for refresh token.".into(),
+            ));
+        };
 
     let expiry_duration = OffsetDateTime::now_utc()
         .checked_sub(Duration::days(2))
@@ -136,7 +156,10 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
         return Err((StatusCode::UNAUTHORIZED, "Refresh token retired.".into()));
     }
 
-    let refresh = s_persons::create_refresh_token(current_person.id.clone()).await;
+    let refresh = services
+        .persons
+        .create_refresh_token(current_person.id.clone())
+        .await;
     let refresh_token = generate_refresh_token(&refresh.id);
 
     let jar = jar.remove(nb_refresh);
@@ -163,6 +186,7 @@ pub async fn refresh_token(jar: CookieJar) -> impl IntoResponse {
 
 #[instrument]
 pub async fn handle_get_person(
+    State(services): State<NbBlogServices>,
     current_person: Extension<Person>,
     Path(person_id): Path<String>,
 ) -> impl IntoResponse {
@@ -173,7 +197,7 @@ pub async fn handle_get_person(
         ));
     }
 
-    if let Some(person) = s_persons::get_person(person_id.clone()).await {
+    if let Some(person) = services.persons.get_person(person_id.clone()).await {
         return Ok(Json(person));
     };
 
@@ -184,10 +208,10 @@ pub async fn handle_get_person(
 }
 
 #[instrument]
-pub async fn get_persons() -> impl IntoResponse {
+pub async fn get_persons(State(services): State<NbBlogServices>) -> impl IntoResponse {
     info!("c: get persons");
 
-    let persons = s_persons::get_persons().await;
+    let persons = services.persons.get_persons().await;
 
     Json(persons)
 }

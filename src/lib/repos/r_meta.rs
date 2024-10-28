@@ -6,7 +6,7 @@ use crate::db::SurrealDBConnection;
 use crate::models::meta::{InsertMetaArgs, Meta};
 use crate::utils::thing_from_string;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MetaRepo {
     reader: NovaDB,
     writer: NovaDB,
@@ -15,24 +15,10 @@ pub struct MetaRepo {
 
 impl MetaRepo {
     #[instrument]
-    pub async fn new() -> Self {
-        let reader = NovaDB::new(SurrealDBConnection {
-            address: "127.0.0.1:52000",
-            username: "root",
-            password: "root",
-            namespace: "test",
-            database: "novabyte.blog",
-        })
-        .await;
+    pub async fn new(conn: &SurrealDBConnection) -> Self {
+        let reader = NovaDB::new(conn).await;
 
-        let writer = NovaDB::new(SurrealDBConnection {
-            address: "127.0.0.1:52000",
-            username: "root",
-            password: "root",
-            namespace: "test",
-            database: "novabyte.blog",
-        })
-        .await;
+        let writer = NovaDB::new(conn).await;
 
         Self {
             reader,

@@ -11,9 +11,8 @@ args = [
     "trace",
     "--bind",
     "127.0.0.1:52000",
-    "file://../dbs/novabyte.blog.db",
+    "surrealkv://../dbs/novabyte.blog.db",
 ]
-# "file:/home/novabyte/novabyte_blog.db",
 
 [tasks.init-db]
 command = "surreal"
@@ -27,8 +26,7 @@ args = [
     "root",
     "--bind",
     "127.0.0.1:52000",
-    # "file:/home/novabyte/novabyte_blog.db",
-    "file://../dbs/novabyte.blog.db",
+    "surrealkv://../dbs/novabyte.blog.db",
 ]
 
 [tasks.format]
@@ -44,6 +42,20 @@ args = ["clean"]
 command = "cargo"
 args = ["build"]
 
+[tasks.bundle]
+script = """
+mkdir -p target/release/dist
+cp run.sh target/release/dist
+mv target/release/nb_blog_api target/release/dist
+"""
+
+[tasks.release]
+command = "cargo"
+args = ["build", "--release"]
+
+[tasks.ship]
+dependencies = ["release", "bundle"]
+
 [tasks.run]
 command = "cargo"
 args = [
@@ -52,11 +64,13 @@ args = [
     "JWT_DURATION_MINUTES=${JWT_DURATION_MINUTES}",
     "REFRESH_DURATION_DAYS=${REFRESH_DURATION_DAYS}",
     "RUST_LOG=${RUST_LOG}",
+    "SERVER_ADDRESS=${SERVER_ADDRESS}",
     "DB_ADDRESS=${DB_ADDRESS}",
     "DB_USER=${DB_USER}",
     "DB_PASSWORD=${DB_PASSWORD}",
     "DB_NAMESPACE=${DB_NAMESPACE}",
     "DB_NAME=${DB_NAME}",
+    "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}",
 ]
 
 [tasks.refresh]

@@ -30,6 +30,7 @@ pub struct PostVersion {
     #[serde(with = "time::serde::iso8601")]
     pub at: OffsetDateTime,
     pub image: String,
+    pub visits: u128,
     pub meta: Meta<()>,
 }
 
