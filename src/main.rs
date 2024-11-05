@@ -9,6 +9,7 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
+use axum_server::tls_rustls::RustlsConfig;
 use constants::{
     NB_ALLOWED_ORIGINS, NB_DB_ADDRESS, NB_DB_NAME, NB_DB_NAMESPACE, NB_DB_PSWD, NB_DB_USER,
     NB_SERVER_ADDRESS,
@@ -18,6 +19,7 @@ use nb_lib::{
     db::SurrealDBConnection,
     services::{s_persons::PersonsService, s_posts::PostsService},
 };
+use rustls::crypto::{aws_lc_rs, CryptoProvider};
 use surrealdb::{engine::any::connect, opt::auth::Root};
 use surrealdb_migrations::MigrationRunner;
 use tokio::net::TcpListener;
@@ -60,8 +62,12 @@ async fn main() {
     // build our application
     let app = init_api().await;
 
+    let port = get_env::<String>("SERVER_PORT")
+        .parse()
+        .expect("Unable to resolve server port!");
+
     // run our app
-    serve(app, 52001).await;
+    serve(app, port).await;
 }
 
 #[instrument]
@@ -215,8 +221,35 @@ async fn serve(app: Router, port: u16) {
         port,
     );
 
-    let listener = TcpListener::bind(addr).await.unwrap();
+    let use_tls = get_env::<String>("USE_TLS")
+        .parse::<bool>()
+        .expect("Unable to resolve use_tls environment variable.");
 
-    info!("listening on {}", addr);
-    axum::serve(listener, app).await.unwrap();
+    if use_tls {
+        CryptoProvider::install_default(CryptoProvider {
+            ..aws_lc_rs::default_provider()
+        })
+        .expect("Unable to load default crypto provider!");
+
+        let tls_conf = RustlsConfig::from_pem_file(
+            "../novabyte.blog.api.cert.pem",
+            "../novabyte.blog.api.key.pem",
+        )
+        .await
+        .expect("Unable to create TLS config!");
+
+        info!("listening on {}", addr);
+
+        axum_server::bind_rustls(addr, tls_conf)
+            .serve(app.into_make_service())
+            .await
+            .expect("Unable to create server!");
+    } else {
+        let listener = TcpListener::bind(addr)
+            .await
+            .expect("Unable to create TCPListener.");
+        axum::serve(listener, app)
+            .await
+            .expect("Unable to create server!");
+    }
 }
