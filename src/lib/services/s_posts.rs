@@ -64,10 +64,6 @@ impl PostsService {
         self.repo.select_draft(&draft_id).await
     }
 
-    /*
-    TODO: i should probably pass the optional post_id as an argument
-    instead of obscuring it in the DraftPostArgs object
-    */
     /// Create a new draft for a post.
     ///
     /// If the id (a post id in this case) is not present create a new post
@@ -120,7 +116,6 @@ impl PostsService {
         new_draft
     }
 
-    // TODO: rename to get_drafts
     /// Gets all current draft versions of any post that is not currently published
     #[instrument(skip(self))]
     pub async fn get_drafted_posts(&self) -> Vec<PostVersion> {
@@ -162,14 +157,12 @@ impl PostsService {
         false
     }
 
-    // TODO: rename to get_published_drafts
     /// Gets all current published versions of any post that has a published draft.
     #[instrument(skip(self))]
     pub async fn get_published_posts(&self) -> Vec<PostVersion> {
         self.repo.select_published_posts().await
     }
 
-    // TODO: rename to unpublish_draft
     /// Unpublish the draft of the given draft id.
     #[instrument(skip(self))]
     pub async fn unpublish_post(&self, draft_id: String) -> bool {

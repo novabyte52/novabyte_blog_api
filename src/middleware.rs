@@ -153,9 +153,6 @@ pub async fn require_refresh_token(
         req.uri().path() == "/persons/refresh"
     );
 
-    // TODO: HIGH: do some validation checks on the refresh token regardless of path
-
-    // TODO: take care of these magic strings
     if req.uri().path() != "/persons/logout" && req.uri().path() != "/persons/refresh" {
         trace!("path is not logout and is not refresh");
         return Ok(next.run(req).await);
@@ -177,10 +174,6 @@ pub async fn require_refresh_token(
                     eprintln!("{}", e);
 
                     if format!("{}", e) == "Token has expired" {
-                        // TODO: when the token is created store the signed version so i can compare here
-                        // so if there is some issue, like the token is expired, i can find who it is associated with
-                        // and invalidate all their refresh tokens.
-
                         return Err((
                             StatusCode::UNAUTHORIZED,
                             NovaWebError {

@@ -22,9 +22,6 @@ pub fn thing_from_string(thing_string: &String) -> Thing {
 
     let thing_parts: Vec<&str> = split.collect();
 
-    // TODO: need to get a list of all table prefixes to check against
-    // if i want to validate the first part of the string, anyway
-
     let ulid = match Ulid::from_str(thing_parts[1]) {
         Ok(u) => u,
         Err(e) => panic!("The second part of a Thing should be a ULID: {:#?}", e),

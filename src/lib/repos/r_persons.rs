@@ -123,11 +123,6 @@ impl PersonsRepo {
             .await;
 
         if !validity.email || !validity.username {
-            /*
-            TODO: since i do a check on the front end to see if usernames and emails
-            are unique before they can sign up i would suspect someone is trying to
-            fudge the system. at some point i'd like to track that.
-            */
             error!("email or username invalid");
             panic!();
         }

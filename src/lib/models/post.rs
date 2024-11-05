@@ -4,7 +4,6 @@ use time::OffsetDateTime;
 
 use super::meta::Meta;
 
-// TODO: should either split out these models and make sure i remove any unneeded ones
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Post {
     pub id: String,
@@ -18,7 +17,6 @@ pub struct PostHydrated {
     pub meta: Meta<()>,
 }
 
-// TODO: rename id to post_id and draft_id to id
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PostVersion {
     pub id: String,
@@ -33,8 +31,6 @@ pub struct PostVersion {
     pub visits: u128,
     pub meta: Meta<()>,
 }
-
-// === draft models === //
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct DraftPostArgs {

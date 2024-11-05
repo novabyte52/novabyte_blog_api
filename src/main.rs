@@ -112,9 +112,6 @@ async fn connect_to_db() {
         .await
         .expect("Failed to apply migrations");
 
-    // TODO: may want to add an endpoint in to rollback migrations at some point
-    // or even just a series of endpoints to manage the db
-
     let migrations_applied = MigrationRunner::new(&db)
         .list()
         .await
@@ -138,7 +135,6 @@ async fn init_api() -> Router {
 
     // configre cors
     let cors = CorsLayer::new()
-        // TODO: make allow origin an env var
         .allow_origin(origins)
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
         .allow_headers([AUTHORIZATION, CONTENT_TYPE])
@@ -170,7 +166,6 @@ async fn init_api() -> Router {
         .route("/persons/logout", delete(logout_person))
         .route("/persons/refresh", get(refresh_token))
         //
-        // .layer(from_fn(require_refresh_token))
         .layer(from_fn_with_state(state.clone(), require_refresh_token))
         // ^^ refresh token layer ^^
         //
@@ -186,7 +181,6 @@ async fn init_api() -> Router {
         // ^^ anonymous routes ^^
         //
         .layer(cors)
-        // TODO: double check and make sure that injecting the state here doesn't give it to the middleware, too
         .with_state(state)
     // ^^ CORS layer ^^
 }

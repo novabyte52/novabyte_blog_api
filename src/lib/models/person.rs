@@ -3,8 +3,6 @@ use surrealdb::sql::Thing;
 
 use super::meta::Meta;
 
-// TODO: should either split out these models and make sure i remove an unneeded ones
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Person {
     pub id: String,
@@ -29,8 +27,8 @@ pub struct SignUpCreds {
 
 #[derive(Debug, Deserialize)]
 pub struct PersonCheck {
-    pub email: Option<String>,    // Option<String>,
-    pub username: Option<String>, // Option<String>,
+    pub email: Option<String>,
+    pub username: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -38,8 +36,6 @@ pub struct PersonCheckResponse {
     pub email: bool,
     pub username: bool,
 }
-
-// === //
 
 #[derive(Debug, Deserialize)]
 pub struct PostPerson {

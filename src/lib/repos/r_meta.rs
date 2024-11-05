@@ -23,8 +23,6 @@ impl MetaRepo {
         Self {
             reader,
             writer,
-            // TODO: will need to update this eventually to also make the updated_by
-            // and deleted_by properties into strings
             select_meta_string: r#"
                 # potential meta selection string
                 meta,
@@ -46,9 +44,6 @@ impl MetaRepo {
         }
     }
 
-    // TODO: create some helper functions for easy updating of meta info
-    // - i.e. set_updated_at, set_updated_by, set_deleted_on, etc.
-    // will probably create a meta service to transfer them to eventually
     pub async fn select_meta_string() -> String {
         r#"
             # potential meta selection string
@@ -68,7 +63,6 @@ impl MetaRepo {
         .to_string()
     }
 
-    // TODO: probably should return Results from the repo layer instead of panicking
     #[instrument(skip(self, tran_conn))]
     pub async fn insert_meta(
         &self,

@@ -395,7 +395,6 @@ impl PostsRepo {
         }
     }
 
-    // MARK:
     #[instrument(skip(self, tran_conn))]
     pub async fn publish_draft(&self, draft_id: String, tran_conn: &NovaDB) -> PostVersion {
         info!("r: publish post");

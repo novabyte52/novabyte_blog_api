@@ -12,8 +12,6 @@ pub struct Token {
     pub meta: Meta<()>,
 }
 
-// TODO: don't like having this varient for only one property difference
-// maybe the better solution is to use an Option type...
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenRecord {
     pub created_by: Thing,
