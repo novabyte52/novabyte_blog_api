@@ -1,10 +1,11 @@
-use std::env;
+use std::{collections::HashMap, env};
 
 use axum::{
     extract::{Request, State},
     http::{header, StatusCode},
     middleware::Next,
     response::IntoResponse,
+    Json,
 };
 use axum_extra::extract::cookie::Cookie;
 use jwt_simple::{
@@ -17,13 +18,14 @@ use nb_lib::{
     services::{s_persons::PersonsService, s_posts::PostsService},
 };
 use time::OffsetDateTime;
-use tracing::{debug, instrument, trace};
+use tracing::{debug, instrument, trace, warn};
 
 use crate::{
     constants::{
         NB_DB_ADDRESS, NB_DB_NAME, NB_DB_NAMESPACE, NB_DB_PSWD, NB_DB_USER, NB_REFRESH_KEY,
+        NB_SECRET_KEY,
     },
-    errors::{NovaWebError, NovaWebErrorId},
+    errors::{NovaWebError, NovaWebErrorContext, NovaWebErrorId},
     utils::get_env,
 };
 
@@ -82,13 +84,14 @@ pub async fn require_authentication(
     let auth_header = match get_authorization_header(&req) {
         Ok(t) => t,
         Err(e) => {
-            println!("{}", e);
+            println!("{:#?}", e);
             return Err((
                 StatusCode::BAD_REQUEST,
-                NovaWebError {
+                Json(NovaWebError {
                     id: NovaWebErrorId::MissingAuthHeader,
                     message: "Missing authorization header.".into(),
-                },
+                    context: Some(NovaWebErrorContext::Authentication),
+                }),
             ));
         }
     };
@@ -97,13 +100,14 @@ pub async fn require_authentication(
     let claims = match verify_token(&auth_header) {
         Ok(t) => t,
         Err(e) => {
-            println!("{}", e);
+            println!("{:#?}", e);
             return Err((
                 StatusCode::UNAUTHORIZED,
-                NovaWebError {
+                Json(NovaWebError {
                     id: NovaWebErrorId::UnverifiableToken,
                     message: "Unable to verify token.".into(),
-                },
+                    context: Some(NovaWebErrorContext::Authentication),
+                }),
             ));
         }
     };
@@ -115,10 +119,11 @@ pub async fn require_authentication(
     if now - secs > 0 {
         return Err((
             StatusCode::UNAUTHORIZED,
-            NovaWebError {
+            Json(NovaWebError {
                 id: NovaWebErrorId::TokenExpired,
                 message: "Token expired.".into(),
-            },
+                context: Some(NovaWebErrorContext::Authentication),
+            }),
         ));
     }
 
@@ -132,10 +137,11 @@ pub async fn require_authentication(
     } else {
         Err((
             StatusCode::NOT_FOUND,
-            NovaWebError {
+            Json(NovaWebError {
                 id: NovaWebErrorId::NotFound,
                 message: "Unable to find subject of token.".into(),
-            },
+                context: Some(NovaWebErrorContext::Authentication),
+            }),
         ))
     }
 }
@@ -146,32 +152,20 @@ pub async fn require_refresh_token(
     mut req: Request,
     next: Next,
 ) -> impl IntoResponse {
-    debug!("request uri: {}", req.uri().path());
-    debug!("path is logout = {}", req.uri().path() == "/persons/logout");
-    debug!(
-        "path is refresh = {}",
-        req.uri().path() == "/persons/refresh"
-    );
-
     if req.uri().path() != "/persons/logout" && req.uri().path() != "/persons/refresh" {
         trace!("path is not logout and is not refresh");
         return Ok(next.run(req).await);
     };
 
-    if let Some(cookie_header) = req.headers().get("cookie") {
-        let raw_jar = cookie_header.to_str().expect("");
-        let mut jar = Cookie::split_parse_encoded(raw_jar);
-
-        if let Some(Ok(cookie)) = jar.find(|c| c.as_ref().is_ok_and(|v| v.name() == NB_REFRESH_KEY))
-        {
-            println!("nb refresh cookie: {}", &cookie);
-            let refresh_token = String::from(cookie.value_trimmed());
+    if let Some(jar) = extract_jar(&req) {
+        if let Some(refresh_token) = jar.get(NB_REFRESH_KEY) {
+            println!("nb refresh cookie: {}", &refresh_token);
 
             // verify token against secret key
             let claims = match verify_refresh_token(&refresh_token) {
                 Ok(t) => t,
                 Err(e) => {
-                    eprintln!("{}", e);
+                    eprintln!("{:#?}", e);
 
                     if format!("{}", e) == "Token has expired" {
                         return Err((
@@ -179,6 +173,7 @@ pub async fn require_refresh_token(
                             NovaWebError {
                                 id: NovaWebErrorId::UnverifiableToken,
                                 message: "Refresh token expired.".into(),
+                                context: Some(NovaWebErrorContext::Refresh),
                             },
                         ));
                     }
@@ -188,6 +183,7 @@ pub async fn require_refresh_token(
                         NovaWebError {
                             id: NovaWebErrorId::UnverifiableToken,
                             message: "Unable to verify token.".into(),
+                            context: Some(NovaWebErrorContext::Refresh),
                         },
                     ));
                 }
@@ -208,6 +204,7 @@ pub async fn require_refresh_token(
                     NovaWebError {
                         id: NovaWebErrorId::NotFound,
                         message: "Unable to find subject of token.".into(),
+                        context: Some(NovaWebErrorContext::Refresh),
                     },
                 ));
             }
@@ -219,8 +216,31 @@ pub async fn require_refresh_token(
         NovaWebError {
             id: NovaWebErrorId::MissingRefreshToken,
             message: "Missing refresh token.".into(),
+            context: Some(NovaWebErrorContext::Refresh),
         },
     ))
+}
+
+fn extract_jar(req: &Request) -> Option<HashMap<String, String>> {
+    let cookie_header = match req.headers().get("cookie") {
+        Some(h) => h,
+        None => {
+            warn!("Unable to find cookie header.");
+            return None;
+        }
+    };
+
+    let raw_jar = cookie_header
+        .to_str()
+        .expect("Unable to convert cookie header to string.");
+
+    Some(
+        Cookie::split_parse_encoded(raw_jar).fold(HashMap::new(), |mut acc, c| {
+            let bar = c.unwrap();
+            acc.insert(bar.name().to_string(), bar.value().to_string());
+            acc
+        }),
+    )
 }
 
 fn get_authorization_header(req: &Request) -> Result<String, String> {
@@ -237,14 +257,14 @@ fn get_authorization_header(req: &Request) -> Result<String, String> {
 }
 
 fn verify_token(token: &String) -> Result<JWTClaims<CustomClaims>, jwt_simple::Error> {
-    let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
+    let secret = env::var(NB_SECRET_KEY).expect("cannot find NOVA_SECRET");
     let key = HS256Key::from_bytes(secret.as_bytes());
 
     key.verify_token::<CustomClaims>(&token, None)
 }
 
 fn verify_refresh_token(token: &String) -> Result<JWTClaims<NoCustomClaims>, jwt_simple::Error> {
-    let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
+    let secret = env::var(NB_SECRET_KEY).expect("cannot find NOVA_SECRET");
     let key = HS256Key::from_bytes(secret.as_bytes());
 
     key.verify_token(&token, None)
