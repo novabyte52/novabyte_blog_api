@@ -54,7 +54,7 @@ impl PersonsService {
             .await
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn log_in_with_creds(&self, creds: LogInCreds) -> Person {
         info!("s: log in");
         let pass_hash = self
@@ -77,7 +77,7 @@ impl PersonsService {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn create_refresh_token(&self, person_id: String) -> TokenRecord {
         let tran_conn = get_tran_connection(&self.conn).await;
 
@@ -90,7 +90,10 @@ impl PersonsService {
         if success {
             self.repo.insert_token_record(person_id, &tran_conn).await
         } else {
-            panic!("Unable to invalidate previous sessions for user {}. Unable to issue new refresh token.", person_id)
+            panic!(
+                "Unable to invalidate previous sessions for {}. Unable to issue new refresh token.",
+                person_id
+            )
         }
     }
 
@@ -104,6 +107,11 @@ impl PersonsService {
     #[instrument]
     pub async fn get_token_record(&self, token_id: String) -> Token {
         self.repo.select_token_record(token_id).await
+    }
+
+    #[instrument(skip(self, signed_token))]
+    pub async fn set_signed_token(&self, token_id: String, signed_token: String) -> bool {
+        self.repo.set_signed_token(token_id, signed_token).await
     }
 
     #[instrument]
