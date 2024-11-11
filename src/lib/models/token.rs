@@ -9,6 +9,7 @@ use super::meta::Meta;
 pub struct Token {
     pub id: String,
     pub person: String,
+    pub signed_token: Option<String>,
     pub meta: Meta<()>,
 }
 
