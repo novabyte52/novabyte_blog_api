@@ -8,7 +8,7 @@ use surrealdb::Error;
 use surrealdb::{opt::auth::Root, Surreal};
 use tracing::{info, instrument};
 
-#[instrument]
+#[instrument(skip(conn))]
 pub async fn get_tran_connection(conn: &SurrealDBConnection) -> NovaDB {
     NovaDB::new(conn).await
 }

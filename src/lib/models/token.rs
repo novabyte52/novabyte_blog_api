@@ -29,6 +29,12 @@ pub struct TokenRecord {
 }
 
 #[derive(Debug, Serialize)]
+pub struct SetSignedTokenArgs {
+    pub token_id: Thing,
+    pub signed_token: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct InsertTokenArgs {
     pub person: Thing,
     pub meta: Thing,

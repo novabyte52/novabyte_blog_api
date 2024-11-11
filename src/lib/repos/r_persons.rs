@@ -9,7 +9,7 @@ use crate::models::meta::InsertMetaArgs;
 use crate::models::person::{
     InsertPersonArgs, Person, PersonCheck, PersonCheckResponse, SelectPersonArgs, SignUpState,
 };
-use crate::models::token::{InsertTokenArgs, Token, TokenRecord};
+use crate::models::token::{InsertTokenArgs, SetSignedTokenArgs, Token, TokenRecord};
 use crate::repos::r_meta::MetaRepo;
 use crate::utils::thing_from_string;
 
@@ -412,6 +412,34 @@ impl PersonsRepo {
     }
 
     #[instrument(skip(self))]
+    pub async fn set_signed_token(&self, token_id: String, signed_token: String) -> bool {
+        let query = self
+            .writer
+            .query_single_with_args_specify_result::<Token, SetSignedTokenArgs>(
+                r#"
+                    UPDATE $token_id
+                    SET
+                        signed_token = $signed_token;
+                    
+                    SELECT * FROM nb_token WHERE token_id = $token_id FETCH meta;
+                "#,
+                SetSignedTokenArgs {
+                    token_id: thing_from_string(&token_id),
+                    signed_token,
+                },
+                1,
+            );
+
+        match query.await {
+            Ok(_t) => true,
+            Err(e) => {
+                error!("Unable to set token for {}: {}", token_id, e);
+                return false;
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
     pub async fn soft_delete_token_record(&self, token_id: &String) -> bool {
         let query = self.writer.query_none_with_args(
             r#"
@@ -430,7 +458,7 @@ impl PersonsRepo {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, tran_conn))]
     pub async fn delete_all_sessions_for_person(
         &self,
         person_id: String,
@@ -443,14 +471,13 @@ impl PersonsRepo {
 
         let query = conn.query_none_with_args(
             r#"
-            UPDATE (
-                SELECT meta FROM nb_token WHERE person = $person_id
-            ).meta
-            SET
-                deleted_on = time::now(),
-                deleted_by = $person_id;
-        "#,
-            ("person_id", person_id),
+                UPDATE meta
+                SET
+                    deleted_on = time::now(),
+                    deleted_by = $person_id
+                WHERE id IN (SELECT meta FROM nb_token WHERE person = $person_id).meta;
+            "#,
+            ("person_id", thing_from_string(&person_id)),
         );
 
         match query.await {
