@@ -9,6 +9,7 @@ use super::meta::Meta;
 pub struct Token {
     pub id: String,
     pub person: String,
+    pub signed_token: Option<String>,
     pub meta: Meta<()>,
 }
 
@@ -25,6 +26,12 @@ pub struct TokenRecord {
     pub id: String,
     pub person: String,
     pub meta: Thing,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SetSignedTokenArgs {
+    pub token_id: Thing,
+    pub signed_token: String,
 }
 
 #[derive(Debug, Serialize)]

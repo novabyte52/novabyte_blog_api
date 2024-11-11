@@ -56,7 +56,7 @@ pub async fn signup_person(
     Json(new_person)
 }
 
-#[instrument]
+#[instrument(skip(jar, services))]
 pub async fn login_person(
     jar: CookieJar,
     State(services): State<NbBlogServices>,
@@ -68,7 +68,13 @@ pub async fn login_person(
         .persons
         .create_refresh_token(person.id.clone())
         .await;
+
     let refresh_token = generate_refresh_token(&refresh.id);
+
+    let _success = services
+        .persons
+        .set_signed_token(refresh.id, refresh_token.clone())
+        .await;
 
     let refresh_duration = env::var(NB_REFRESH_DURATION)
         .expect(format!("cannot find {}", NB_REFRESH_DURATION).as_str())
