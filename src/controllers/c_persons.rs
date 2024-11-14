@@ -56,31 +56,38 @@ pub async fn signup_person(
     Json(new_person)
 }
 
+/// Attempt to log in a person with the provided credentials (email & password)
 #[instrument(skip(jar, services))]
 pub async fn login_person(
     jar: CookieJar,
     State(services): State<NbBlogServices>,
     Json(creds): Json<LogInCreds>,
 ) -> impl IntoResponse {
+    // attempt to log the person in using their credentials
     let person = services.persons.log_in_with_creds(creds).await;
 
+    // create the db record for the refresh token (our session record)
     let refresh = services
         .persons
         .create_refresh_token(person.id.clone())
         .await;
 
+    // generate a signed refresh token using the id of the session record
     let refresh_token = generate_refresh_token(&refresh.id);
 
+    // store the signed token in the session record for lookup purposes
     let _success = services
         .persons
         .set_signed_token(refresh.id, refresh_token.clone())
         .await;
 
+    // create the duration for which this token is valid
     let refresh_duration = env::var(NB_REFRESH_DURATION)
         .expect(format!("cannot find {}", NB_REFRESH_DURATION).as_str())
         .parse::<i64>()
         .expect(format!("unable to parse {} into i64", NB_REFRESH_DURATION).as_str());
 
+    // add the refresh token as an http-only cookie
     let jar = jar.add(
         Cookie::build((NB_REFRESH_KEY, refresh_token.clone()))
             .path("/")
@@ -90,6 +97,7 @@ pub async fn login_person(
             .same_site(SameSite::None),
     );
 
+    // return the modified cookie jar, the person who logged in and their jwt (authentication token)
     (
         jar,
         Json(LoginResponse {
@@ -102,11 +110,11 @@ pub async fn login_person(
 pub async fn logout_person(
     jar: CookieJar,
     State(services): State<NbBlogServices>,
-    person: Extension<Person>,
+    // person: Extension<Person>,
 ) -> impl IntoResponse {
     let jar = jar.remove(Cookie::from(NB_REFRESH_KEY));
 
-    services.persons.logout(person.0).await;
+    // services.persons.logout(person.0).await;
 
     (jar, Json(true))
 }
