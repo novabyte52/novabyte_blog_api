@@ -1,8 +1,15 @@
-use std::{collections::HashMap, env};
+use std::{
+    collections::HashMap,
+    env,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+};
 
 use axum::{
     extract::{Request, State},
-    http::{header, StatusCode},
+    http::{header, HeaderName, StatusCode},
     middleware::Next,
     response::IntoResponse,
     Json,
@@ -18,6 +25,10 @@ use nb_lib::{
     services::{s_persons::PersonsService, s_posts::PostsService},
 };
 use time::OffsetDateTime;
+use tower::{layer::util::Stack, ServiceBuilder};
+use tower_http::request_id::{
+    MakeRequestId, PropagateRequestIdLayer, RequestId, SetRequestIdLayer,
+};
 use tracing::{debug, instrument, trace, warn};
 
 use crate::{
@@ -86,7 +97,7 @@ pub async fn require_authentication(
         Err(e) => {
             println!("{:#?}", e);
             return Err((
-                StatusCode::BAD_REQUEST,
+                StatusCode::UNAUTHORIZED,
                 Json(NovaWebError {
                     id: NovaWebErrorId::MissingAuthHeader,
                     message: "Missing authorization header.".into(),
@@ -96,8 +107,35 @@ pub async fn require_authentication(
         }
     };
 
+    if !auth_header.starts_with("Bearer ") {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(NovaWebError {
+                id: NovaWebErrorId::UnverifiableToken,
+                message: "Authorization header malformed".into(),
+                context: Some(NovaWebErrorContext::Authentication),
+            }),
+        ));
+    }
+
+    let token = match auth_header.split(" ").next() {
+        Some(t) => t,
+        None => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(NovaWebError {
+                    id: NovaWebErrorId::UnverifiableToken,
+                    message: "Bearer token malformed".into(),
+                    context: Some(NovaWebErrorContext::Authentication),
+                }),
+            ))
+        }
+    };
+
+    debug!("token value: {}", token);
+
     // verify token against secret key
-    let claims = match verify_token(&auth_header) {
+    let claims = match verify_token(&String::from(token)) {
         Ok(t) => t,
         Err(e) => {
             println!("{:#?}", e);
@@ -268,4 +306,41 @@ fn verify_refresh_token(token: &String) -> Result<JWTClaims<NoCustomClaims>, jwt
     let key = HS256Key::from_bytes(secret.as_bytes());
 
     key.verify_token(&token, None)
+}
+
+// A `MakeRequestId` that increments an atomic counter
+#[derive(Clone, Default)]
+pub struct MyMakeRequestId {
+    counter: Arc<AtomicU64>,
+}
+
+impl MakeRequestId for MyMakeRequestId {
+    fn make_request_id<B>(&mut self, _request: &Request<B>) -> Option<RequestId> {
+        let request_id = self
+            .counter
+            .fetch_add(1, Ordering::SeqCst)
+            .to_string()
+            .parse()
+            .unwrap();
+
+        Some(RequestId::new(request_id))
+    }
+}
+
+pub fn get_request_id_service() -> ServiceBuilder<
+    Stack<
+        PropagateRequestIdLayer,
+        Stack<SetRequestIdLayer<MyMakeRequestId>, tower::layer::util::Identity>,
+    >,
+> {
+    let x_request_id = HeaderName::from_static("x-request-id");
+
+    ServiceBuilder::new()
+        // set `x-request-id` header on all requests
+        .layer(SetRequestIdLayer::new(
+            x_request_id.clone(),
+            MyMakeRequestId::default(),
+        ))
+        // propagate `x-request-id` headers from request to response
+        .layer(PropagateRequestIdLayer::new(x_request_id))
 }

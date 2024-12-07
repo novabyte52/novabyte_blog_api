@@ -7,8 +7,6 @@ command = "update-surreal"
 command = "surreal"
 args = [
     "start",
-    "--log",
-    "trace",
     "--bind",
     "127.0.0.1:52000",
     "surrealkv://../dbs/novabyte.blog.db",

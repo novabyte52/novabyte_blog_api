@@ -90,11 +90,12 @@ pub async fn login_person(
     // add the refresh token as an http-only cookie
     let jar = jar.add(
         Cookie::build((NB_REFRESH_KEY, refresh_token.clone()))
-            .path("/")
+            // .path("/refresh")
             .expires(OffsetDateTime::now_utc() + Duration::days(refresh_duration))
             .http_only(true)
             .secure(false)
-            .same_site(SameSite::None),
+            // .domain("novabyte.blog")
+            .same_site(SameSite::Lax),
     );
 
     // return the modified cookie jar, the person who logged in and their jwt (authentication token)
@@ -110,11 +111,11 @@ pub async fn login_person(
 pub async fn logout_person(
     jar: CookieJar,
     State(services): State<NbBlogServices>,
-    // person: Extension<Person>,
+    person: Extension<Person>,
 ) -> impl IntoResponse {
     let jar = jar.remove(Cookie::from(NB_REFRESH_KEY));
 
-    // services.persons.logout(person.0).await;
+    services.persons.logout(person.0).await;
 
     (jar, Json(true))
 }
