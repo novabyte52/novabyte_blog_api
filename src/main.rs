@@ -25,7 +25,7 @@ use surrealdb::{engine::any::connect, opt::auth::Root};
 use surrealdb_migrations::MigrationRunner;
 use tokio::net::TcpListener;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
-use tracing::{debug, info, info_span, instrument, trace};
+use tracing::{debug, error, info, info_span, instrument, trace};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 pub mod constants;
@@ -44,14 +44,17 @@ use controllers::{
         handle_create_draft, handle_get_random_post, publish_draft, unpublish_post,
     },
 };
-use middleware::{
-    get_request_id_service, is_admin, require_authentication, require_refresh_token, NbBlogServices,
-};
+use middleware::{get_request_id_service, is_admin, require_authentication, NbBlogServices};
 use utils::get_env;
 
 #[instrument]
 #[tokio::main]
 async fn main() {
+    if !dotenv::dotenv().is_ok() {
+        error!("unable to load .env");
+        panic!();
+    }
+
     // initialize tracing
     tracing_subscriber::registry()
         .with(fmt::layer())
@@ -169,9 +172,6 @@ async fn init_api() -> Router {
         //
         .route("/persons/refresh", get(refresh_token))
         //
-        .layer(from_fn_with_state(state.clone(), require_refresh_token))
-        // ^^ refresh token layer ^^
-        //
         // anonymous public persons routes
         .route("/persons/login", post(login_person))
         .route("/persons/signup", post(signup_person))
@@ -267,6 +267,7 @@ async fn serve(app: Router, port: u16) {
         let listener = TcpListener::bind(addr)
             .await
             .expect("Unable to create TCPListener.");
+        info!("listening on {}", addr);
         axum::serve(listener, app.into_make_service())
             .await
             .expect("Unable to create server!");
