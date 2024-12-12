@@ -1,4 +1,4 @@
-env_files = ["../nb_secrets.env"]
+# env_files = ["../nb_secrets.env"]
 
 [tasks.update-surreal]
 command = "update-surreal"
@@ -8,10 +8,10 @@ command = "surreal"
 args = [
     "start",
     "--log",
-    "trace",
+    "debug",
     "--bind",
     "127.0.0.1:52000",
-    "surrealkv://../dbs/novabyte.blog.db",
+    "surrealkv://../../dbs/novabyte.blog.db",
 ]
 
 [tasks.init-db]
@@ -19,14 +19,14 @@ command = "surreal"
 args = [
     "start",
     "--log",
-    "trace",
+    "debug",
     "--user",
     "root",
     "--pass",
     "root",
     "--bind",
     "127.0.0.1:52000",
-    "surrealkv://../dbs/novabyte.blog.db",
+    "surrealkv://../../dbs/novabyte.blog.db",
 ]
 
 [tasks.format]
@@ -60,19 +60,19 @@ dependencies = ["release", "bundle"]
 command = "cargo"
 args = [
     "run",
-    "NOVA_SECRET=${NOVA_SECRET}",
-    "JWT_DURATION_MINUTES=${JWT_DURATION_MINUTES}",
-    "REFRESH_DURATION_DAYS=${REFRESH_DURATION_DAYS}",
-    "RUST_LOG=${RUST_LOG}",
-    "SERVER_ADDRESS=${SERVER_ADDRESS}",
-    "SERVER_PORT=${SERVER_PORT}",
-    "DB_ADDRESS=${DB_ADDRESS}",
-    "DB_USER=${DB_USER}",
-    "DB_PASSWORD=${DB_PASSWORD}",
-    "DB_NAMESPACE=${DB_NAMESPACE}",
-    "DB_NAME=${DB_NAME}",
-    "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}",
-    "USE_TLS=false",
+    # "NOVA_SECRET=${NOVA_SECRET}",
+    # "JWT_DURATION_MINUTES=${JWT_DURATION_MINUTES}",
+    # "REFRESH_DURATION_DAYS=${REFRESH_DURATION_DAYS}",
+    # "RUST_LOG=${RUST_LOG}",
+    # "SERVER_ADDRESS=${SERVER_ADDRESS}",
+    # "SERVER_PORT=${SERVER_PORT}",
+    # "DB_ADDRESS=${DB_ADDRESS}",
+    # "DB_USER=${DB_USER}",
+    # "DB_PASSWORD=${DB_PASSWORD}",
+    # "DB_NAMESPACE=${DB_NAMESPACE}",
+    # "DB_NAME=${DB_NAME}",
+    # "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}",
+    # "USE_TLS=false",
 ]
 
 [tasks.refresh]

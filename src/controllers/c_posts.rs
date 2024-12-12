@@ -10,19 +10,19 @@ use tracing::{info, instrument};
 
 use crate::middleware::NbBlogServices;
 
-#[instrument]
+#[instrument(skip(services))]
 pub async fn handle_get_random_post(State(services): State<NbBlogServices>) -> impl IntoResponse {
     let post = services.posts.get_random_post().await;
     Json(post)
 }
 
-#[instrument]
+#[instrument(skip(services))]
 pub async fn get_posts(State(services): State<NbBlogServices>) -> impl IntoResponse + 'static {
     let posts = services.posts.get_posts().await;
     Json(posts)
 }
 
-#[instrument]
+#[instrument(skip(services))]
 pub async fn get_post_drafts(
     State(services): State<NbBlogServices>,
     Path(post_id): Path<String>,
@@ -32,7 +32,7 @@ pub async fn get_post_drafts(
 
 /// GET endpoint to handle getting a draft based on the draft_id passed in the request url.
 /// Sends the retrieved draft in the response body.
-#[instrument]
+#[instrument(skip(services))]
 pub async fn get_draft(
     State(services): State<NbBlogServices>,
     Path(draft_id): Path<String>,
@@ -44,7 +44,7 @@ pub async fn get_draft(
 
 /// POST endpoint to handle the creation of a draft.
 /// Sends the newly created draft in the response body.
-#[instrument]
+#[instrument(skip(services))]
 pub async fn handle_create_draft(
     State(services): State<NbBlogServices>,
     current_person: Extension<Person>,
@@ -58,7 +58,7 @@ pub async fn handle_create_draft(
     Json(new_draft)
 }
 
-#[instrument]
+#[instrument(skip(services))]
 pub async fn get_drafted_posts(State(services): State<NbBlogServices>) -> impl IntoResponse {
     info!("c: get drafted posts");
 
@@ -70,7 +70,7 @@ pub async fn get_drafted_posts(State(services): State<NbBlogServices>) -> impl I
 #[instrument]
 pub async fn get_current_draft() -> impl IntoResponse {}
 
-#[instrument]
+#[instrument(skip(services))]
 pub async fn publish_draft(
     State(services): State<NbBlogServices>,
     Path(draft_id): Path<String>,
@@ -87,7 +87,7 @@ pub async fn get_published_posts(State(services): State<NbBlogServices>) -> impl
     Json(posts)
 }
 
-#[instrument]
+#[instrument(skip(services))]
 pub async fn unpublish_post(
     State(services): State<NbBlogServices>,
     Path(draft_id): Path<String>,

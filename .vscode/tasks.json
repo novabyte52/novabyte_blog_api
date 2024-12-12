@@ -2,10 +2,9 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "type": "process",
+      "type": "shell",
       "label": "api",
-      "command": "/bin/bash",
-      "args": ["-l"],
+      "command": "/bin/bash -i -l",
       "problemMatcher": [],
       "presentation": {
         "echo": false,
