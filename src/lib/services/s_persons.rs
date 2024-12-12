@@ -28,12 +28,12 @@ impl PersonsService {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn check_person_validity(&self, check: PersonCheck) -> PersonCheckResponse {
         self.repo.is_person_unique(check).await
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn sign_up(&self, mut sign_up_state: SignUpState) -> Person {
         let argon2 = Argon2::default();
 
@@ -97,14 +97,21 @@ impl PersonsService {
         }
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn logout(&self, person: Person) {
         self.repo
             .delete_all_sessions_for_person(person.id, None)
             .await;
     }
+    
+    #[instrument(skip(self))]
+    pub async fn logout_by_id(&self, person_id: String) {
+        self.repo
+            .delete_all_sessions_for_person(person_id, None)
+            .await;
+    }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn get_token_record(&self, token_id: String) -> Token {
         self.repo.select_token_record(token_id).await
     }
@@ -114,18 +121,18 @@ impl PersonsService {
         self.repo.set_signed_token(token_id, signed_token).await
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn soft_delete_token_record(&self, token_id: String) {
         self.repo.soft_delete_token_record(&token_id).await;
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn get_person(&self, person_id: String) -> Option<Person> {
         info!("s: get person");
         self.repo.select_person(person_id).await
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn get_persons(&self) -> Vec<Person> {
         info!("s: get persons");
         let foo = self.repo.select_persons().await;
@@ -133,7 +140,7 @@ impl PersonsService {
         foo
     }
 
-    #[instrument]
+    #[instrument(skip(self))]
     pub async fn invalidate_refresh(&self, person_id: String) -> bool {
         self.repo
             .delete_all_sessions_for_person(person_id, None)

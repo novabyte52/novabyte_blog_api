@@ -1,6 +1,6 @@
 pub const NB_REFRESH_KEY: &str = "nbRefresh";
 pub const NB_SECRET_KEY: &str = "NOVA_SECRET";
-pub const NB_REFRESH_DURATION: &str = "REFRESH_DURATION_DAYS";
+pub const NB_REFRESH_DURATION: &str = "REFRESH_DURATION_MINUTES";
 pub const NB_JWT_DURATION: &str = "JWT_DURATION_MINUTES";
 pub const NB_DB_ADDRESS: &str = "DB_ADDRESS";
 pub const NB_DB_USER: &str = "DB_USER";
