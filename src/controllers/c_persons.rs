@@ -239,7 +239,9 @@ fn generate_refresh_cookie<'a>(refresh_token: Option<String>) -> Cookie<'a> {
 
     // DEBT: may want to make a specific path for logout and refresh to more granularly control the cookie
     let cookie_path = "/api/persons";
-    let valid_until = OffsetDateTime::now_utc() + Duration::days(refresh_duration);
+
+    // set cookie to expire an hour after the token is set to expire
+    let valid_until = OffsetDateTime::now_utc() + Duration::minutes(refresh_duration + 60);
 
     // TODO: make this env key a constant
     let is_secure = env::var("USE_TLS")
