@@ -13,6 +13,27 @@ pub struct MetaRepo {
     pub select_meta_string: String,
 }
 
+fn select_meta_string() -> String {
+    r#"
+        # potential meta selection string
+        meta,
+        (
+            SELECT
+                fn::string_id(id) as id,
+                fn::string_id(created_by) as created_by,
+                modified_on,
+                (IF !type::is::none(modified_by) THEN fn::string_id(modified_by) END) as modified_by,
+                deleted_on,
+                (IF !type::is::none(deleted_by) THEN fn::string_id(deleted_by) END) as deleted_by,
+                *
+            FROM ONLY meta
+            WHERE id = $parent.meta
+            LIMIT 1
+        ) as meta
+    "#
+    .to_string()
+}
+
 impl MetaRepo {
     #[instrument]
     pub async fn new(conn: &SurrealDBConnection) -> Self {
@@ -23,44 +44,8 @@ impl MetaRepo {
         Self {
             reader,
             writer,
-            select_meta_string: r#"
-                # potential meta selection string
-                meta,
-                (
-                    SELECT
-                        fn::string_id(id) as id,
-                        fn::string_id(created_by) as created_by,
-                        modified_on,
-                        (IF !type::is::none(modified_by) THEN fn::string_id(modified_by) END) as modified_by,
-                        deleted_on,
-                        (IF !type::is::none(deleted_by) THEN fn::string_id(deleted_by) END) as deleted_by,
-                        *
-                    FROM ONLY meta
-                    WHERE id = $parent.meta
-                    LIMIT 1
-                ) as meta
-            "#
-            .to_string(),
+            select_meta_string: select_meta_string(),
         }
-    }
-
-    pub async fn select_meta_string() -> String {
-        r#"
-            # potential meta selection string
-            meta,
-            (
-                SELECT
-                    fn::string_id(id) as id,
-                    fn::string_id(created_by) as created_by,
-                    modified_on,
-                    deleted_on,
-                    *
-                FROM ONLY meta
-                WHERE id = $parent.meta
-                LIMIT 1
-            ) as meta
-        "#
-        .to_string()
     }
 
     #[instrument(skip(self, tran_conn))]
