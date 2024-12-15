@@ -103,7 +103,7 @@ impl PersonsService {
             .delete_all_sessions_for_person(person.id, None)
             .await;
     }
-    
+
     #[instrument(skip(self))]
     pub async fn logout_by_id(&self, person_id: String) {
         self.repo

@@ -100,10 +100,10 @@ pub async fn logout_person(
     State(services): State<NbBlogServices>,
     jar: CookieJar,
     current_person: Extension<Person>,
-    person_id: String
+    person_id: String,
 ) -> impl IntoResponse {
     if current_person.id != person_id {
-        return Err((StatusCode::FORBIDDEN, jar, Json(false)))
+        return Err((StatusCode::FORBIDDEN, jar, Json(false)));
     }
 
     services.persons.logout_by_id(person_id).await;
@@ -237,7 +237,7 @@ fn generate_refresh_cookie<'a>(refresh_token: Option<String>) -> Cookie<'a> {
         .parse::<i64>()
         .expect(format!("unable to parse {} into i64", NB_REFRESH_DURATION).as_str());
 
-    // DEBT: may want to make a specific path for logout and refresh to more granularly control the cookie 
+    // DEBT: may want to make a specific path for logout and refresh to more granularly control the cookie
     let cookie_path = "/api/persons";
     let valid_until = OffsetDateTime::now_utc() + Duration::days(refresh_duration);
 
