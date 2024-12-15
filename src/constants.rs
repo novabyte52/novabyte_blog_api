@@ -8,4 +8,4 @@ pub const NB_DB_PSWD: &str = "DB_PASSWORD";
 pub const NB_DB_NAMESPACE: &str = "DB_NAMESPACE";
 pub const NB_DB_NAME: &str = "DB_NAME";
 pub const NB_SERVER_ADDRESS: &str = "SERVER_ADDRESS";
-pub const NB_ALLOWED_ORIGINS: &str = "ALLOWED_ORIGINS";
+pub const NB_ALLOWED_ORIGIN: &str = "ALLOWED_ORIGIN";
