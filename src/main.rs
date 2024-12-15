@@ -12,7 +12,7 @@ use axum::{
 };
 use axum_server::tls_rustls::RustlsConfig;
 use constants::{
-    NB_ALLOWED_ORIGINS, NB_DB_ADDRESS, NB_DB_NAME, NB_DB_NAMESPACE, NB_DB_PSWD, NB_DB_USER,
+    NB_ALLOWED_ORIGIN, NB_DB_ADDRESS, NB_DB_NAME, NB_DB_NAMESPACE, NB_DB_PSWD, NB_DB_USER,
     NB_SERVER_ADDRESS,
 };
 use include_dir::include_dir;
@@ -128,20 +128,16 @@ async fn connect_to_db() {
 
 // #[instrument]
 async fn init_api() -> Router {
-    let origins_raw: String = get_env(NB_ALLOWED_ORIGINS);
-    println!("allowed origins raw val: {}", &origins_raw);
-    let origins: Vec<HeaderValue> = origins_raw
-        .split(",")
-        .map(|o| {
-            String::from(o)
-                .parse()
-                .expect("Unable to parse origin value.")
-        })
-        .collect();
+    let allowed_origin: String = get_env(NB_ALLOWED_ORIGIN);
+    println!("allowed origin val: {}", &allowed_origin);
 
     // configre cors
     let cors = CorsLayer::new()
-        .allow_origin(origins)
+        .allow_origin(
+            allowed_origin
+                .parse::<HeaderValue>()
+                .expect("Unable to read allowed origin."),
+        )
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
         .allow_headers([AUTHORIZATION, CONTENT_TYPE, COOKIE])
         .allow_credentials(true);
