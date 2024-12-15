@@ -7,6 +7,12 @@ use axum::response::{IntoResponse, IntoResponseParts};
 use serde::Serialize;
 
 #[derive(Debug, Serialize, Clone)]
+pub enum NovaWebErrorContext {
+    Authentication,
+    Refresh,
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub enum NovaWebErrorId {
     NotAdmin,
     MissingAuthHeader,
@@ -38,6 +44,7 @@ impl IntoResponseParts for NovaWebErrorId {
 pub struct NovaWebError {
     pub id: NovaWebErrorId,
     pub message: String,
+    pub context: Option<NovaWebErrorContext>,
 }
 
 impl IntoResponse for NovaWebError {

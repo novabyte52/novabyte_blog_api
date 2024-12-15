@@ -1,8 +1,9 @@
 use std::net::SocketAddr;
 
 use axum::{
+    extract::{MatchedPath, Request},
     http::{
-        header::{AUTHORIZATION, CONTENT_TYPE},
+        header::{AUTHORIZATION, CONTENT_TYPE, COOKIE},
         HeaderValue, Method,
     },
     middleware::{from_fn, from_fn_with_state},
@@ -23,8 +24,8 @@ use rustls::crypto::{aws_lc_rs, CryptoProvider};
 use surrealdb::{engine::any::connect, opt::auth::Root};
 use surrealdb_migrations::MigrationRunner;
 use tokio::net::TcpListener;
-use tower_http::cors::CorsLayer;
-use tracing::{debug, info, instrument, trace};
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tracing::{debug, error, info, info_span, instrument, trace};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 pub mod constants;
@@ -43,12 +44,17 @@ use controllers::{
         handle_create_draft, handle_get_random_post, publish_draft, unpublish_post,
     },
 };
-use middleware::{is_admin, require_authentication, require_refresh_token, NbBlogServices};
+use middleware::{get_request_id_service, is_admin, require_authentication, NbBlogServices};
 use utils::get_env;
 
 #[instrument]
 #[tokio::main]
 async fn main() {
+    if !dotenv::dotenv().is_ok() {
+        error!("unable to load .env");
+        panic!();
+    }
+
     // initialize tracing
     tracing_subscriber::registry()
         .with(fmt::layer())
@@ -137,7 +143,7 @@ async fn init_api() -> Router {
     let cors = CorsLayer::new()
         .allow_origin(origins)
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
-        .allow_headers([AUTHORIZATION, CONTENT_TYPE])
+        .allow_headers([AUTHORIZATION, CONTENT_TYPE, COOKIE])
         .allow_credentials(true);
 
     let state = init_services().await;
@@ -157,17 +163,14 @@ async fn init_api() -> Router {
         .layer(from_fn(is_admin))
         // ^^ admin layer ^^
         //
+        .route("/persons/:person_id/logout", delete(logout_person))
         // eventual endpoints for profiles, comments, etc. will go in between the authorization check and the admin check
         .route("/persons/:person_id", get(handle_get_person))
         //
         .layer(from_fn_with_state(state.clone(), require_authentication))
         // ^^ authentication layer ^^
         //
-        .route("/persons/logout", delete(logout_person))
         .route("/persons/refresh", get(refresh_token))
-        //
-        .layer(from_fn_with_state(state.clone(), require_refresh_token))
-        // ^^ refresh token layer ^^
         //
         // anonymous public persons routes
         .route("/persons/login", post(login_person))
@@ -178,6 +181,28 @@ async fn init_api() -> Router {
         .route("/posts/drafts/:draft_id", get(get_draft))
         .route("/posts/random", get(handle_get_random_post))
         .route("/posts/published", get(get_published_posts))
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {
+                // Log the matched route's path (with placeholders not filled in).
+                // Use request.uri() or OriginalUri if you want the real path.
+                let matched_path = request
+                    .extensions()
+                    .get::<MatchedPath>()
+                    .map(MatchedPath::as_str);
+
+                let id = request.headers().get("x-request-id").expect("");
+
+                info_span!(
+                    "http_request",
+                    id = id.to_str().unwrap(),
+                    path = ?request.uri(),
+                    method = ?request.method(),
+                    matched_path,
+                    some_other_field = tracing::field::Empty,
+                )
+            }),
+        )
+        .layer(get_request_id_service())
         // ^^ anonymous routes ^^
         //
         .layer(cors)
@@ -242,7 +267,8 @@ async fn serve(app: Router, port: u16) {
         let listener = TcpListener::bind(addr)
             .await
             .expect("Unable to create TCPListener.");
-        axum::serve(listener, app)
+        info!("listening on {}", addr);
+        axum::serve(listener, app.into_make_service())
             .await
             .expect("Unable to create server!");
     }

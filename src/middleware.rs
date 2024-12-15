@@ -1,62 +1,43 @@
-use std::env;
+use std::{
+    env,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+};
 
 use axum::{
     extract::{Request, State},
-    http::{header, StatusCode},
+    http::{header, HeaderName, StatusCode},
     middleware::Next,
     response::IntoResponse,
+    Json,
 };
-use axum_extra::extract::cookie::Cookie;
 use jwt_simple::{
     algorithms::{HS256Key, MACLike},
-    claims::{JWTClaims, NoCustomClaims},
+    claims::JWTClaims,
+    common::VerificationOptions,
+    prelude::Duration,
 };
 use nb_lib::{
-    db::SurrealDBConnection,
     models::{custom_claims::CustomClaims, person::Person},
     services::{s_persons::PersonsService, s_posts::PostsService},
 };
-use time::OffsetDateTime;
-use tracing::{debug, instrument, trace};
+use tower::{layer::util::Stack, ServiceBuilder};
+use tower_http::request_id::{
+    MakeRequestId, PropagateRequestIdLayer, RequestId, SetRequestIdLayer,
+};
+use tracing::{debug, error, instrument, warn};
 
 use crate::{
-    constants::{
-        NB_DB_ADDRESS, NB_DB_NAME, NB_DB_NAMESPACE, NB_DB_PSWD, NB_DB_USER, NB_REFRESH_KEY,
-    },
-    errors::{NovaWebError, NovaWebErrorId},
-    utils::get_env,
+    constants::NB_SECRET_KEY,
+    errors::{NovaWebError, NovaWebErrorContext, NovaWebErrorId},
 };
 
 #[derive(Debug, Clone)]
 pub struct NbBlogServices {
     pub posts: PostsService,
     pub persons: PersonsService,
-}
-
-#[instrument(skip(req, next))]
-pub async fn init_services(mut req: Request, next: Next) -> impl IntoResponse {
-    let addr = get_env::<String>(NB_DB_ADDRESS);
-    let user = get_env::<String>(NB_DB_USER);
-    let pass = get_env::<String>(NB_DB_PSWD);
-    let namespace = get_env::<String>(NB_DB_NAMESPACE);
-    let db = get_env::<String>(NB_DB_NAME);
-
-    let conn = SurrealDBConnection {
-        address: addr,
-        username: user,
-        password: pass,
-        namespace: namespace,
-        database: db,
-    };
-
-    let services = NbBlogServices {
-        posts: PostsService::new(conn.clone()).await,
-        persons: PersonsService::new(conn.clone()).await,
-    };
-
-    req.extensions_mut().insert(services);
-
-    next.run(req).await
 }
 
 #[instrument(skip(req, next))]
@@ -73,7 +54,7 @@ pub async fn is_admin(req: Request, next: Next) -> impl IntoResponse {
     ))
 }
 
-#[instrument(skip(req, next))]
+#[instrument(skip(services, req, next))]
 pub async fn require_authentication(
     State(services): State<NbBlogServices>,
     mut req: Request,
@@ -82,45 +63,60 @@ pub async fn require_authentication(
     let auth_header = match get_authorization_header(&req) {
         Ok(t) => t,
         Err(e) => {
-            println!("{}", e);
-            return Err((
-                StatusCode::BAD_REQUEST,
-                NovaWebError {
-                    id: NovaWebErrorId::MissingAuthHeader,
-                    message: "Missing authorization header.".into(),
-                },
-            ));
-        }
-    };
-
-    // verify token against secret key
-    let claims = match verify_token(&auth_header) {
-        Ok(t) => t,
-        Err(e) => {
-            println!("{}", e);
+            println!("{:#?}", e);
             return Err((
                 StatusCode::UNAUTHORIZED,
-                NovaWebError {
-                    id: NovaWebErrorId::UnverifiableToken,
-                    message: "Unable to verify token.".into(),
-                },
+                Json(NovaWebError {
+                    id: NovaWebErrorId::MissingAuthHeader,
+                    message: "Missing authorization header.".into(),
+                    context: Some(NovaWebErrorContext::Authentication),
+                }),
             ));
         }
     };
 
-    let exp = claims.expires_at.expect("no expiration detected");
-    let secs = exp.as_secs() as i64;
-    let now = OffsetDateTime::now_utc().unix_timestamp();
-
-    if now - secs > 0 {
+    if !auth_header.starts_with("Bearer ") {
         return Err((
             StatusCode::UNAUTHORIZED,
-            NovaWebError {
-                id: NovaWebErrorId::TokenExpired,
-                message: "Token expired.".into(),
-            },
+            Json(NovaWebError {
+                id: NovaWebErrorId::UnverifiableToken,
+                message: "Authorization header malformed".into(),
+                context: Some(NovaWebErrorContext::Authentication),
+            }),
         ));
     }
+
+    let token = match auth_header.split(" ").nth(1) {
+        Some(t) => t,
+        None => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(NovaWebError {
+                    id: NovaWebErrorId::UnverifiableToken,
+                    message: "Bearer token malformed".into(),
+                    context: Some(NovaWebErrorContext::Authentication),
+                }),
+            ))
+        }
+    };
+
+    debug!("token value: {}", token);
+
+    // verify token against secret key
+    let claims = match verify_token(&String::from(token)) {
+        Ok(t) => t,
+        Err(e) => {
+            error!("{:#?}", e);
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(NovaWebError {
+                    id: NovaWebErrorId::UnverifiableToken,
+                    message: format!("Unable to verify token: {}", e.to_string()),
+                    context: Some(NovaWebErrorContext::Authentication),
+                }),
+            ));
+        }
+    };
 
     let person_id = claims.subject.expect("Unable to find subject claim");
 
@@ -132,97 +128,16 @@ pub async fn require_authentication(
     } else {
         Err((
             StatusCode::NOT_FOUND,
-            NovaWebError {
+            Json(NovaWebError {
                 id: NovaWebErrorId::NotFound,
                 message: "Unable to find subject of token.".into(),
-            },
+                context: Some(NovaWebErrorContext::Authentication),
+            }),
         ))
     }
 }
 
-#[instrument(skip(services, req, next))]
-pub async fn require_refresh_token(
-    State(services): State<NbBlogServices>,
-    mut req: Request,
-    next: Next,
-) -> impl IntoResponse {
-    debug!("request uri: {}", req.uri().path());
-    debug!("path is logout = {}", req.uri().path() == "/persons/logout");
-    debug!(
-        "path is refresh = {}",
-        req.uri().path() == "/persons/refresh"
-    );
-
-    if req.uri().path() != "/persons/logout" && req.uri().path() != "/persons/refresh" {
-        trace!("path is not logout and is not refresh");
-        return Ok(next.run(req).await);
-    };
-
-    if let Some(cookie_header) = req.headers().get("cookie") {
-        let raw_jar = cookie_header.to_str().expect("");
-        let mut jar = Cookie::split_parse_encoded(raw_jar);
-
-        if let Some(Ok(cookie)) = jar.find(|c| c.as_ref().is_ok_and(|v| v.name() == NB_REFRESH_KEY))
-        {
-            println!("nb refresh cookie: {}", &cookie);
-            let refresh_token = String::from(cookie.value_trimmed());
-
-            // verify token against secret key
-            let claims = match verify_refresh_token(&refresh_token) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("{}", e);
-
-                    if format!("{}", e) == "Token has expired" {
-                        return Err((
-                            StatusCode::UNAUTHORIZED,
-                            NovaWebError {
-                                id: NovaWebErrorId::UnverifiableToken,
-                                message: "Refresh token expired.".into(),
-                            },
-                        ));
-                    }
-
-                    return Err((
-                        StatusCode::UNAUTHORIZED,
-                        NovaWebError {
-                            id: NovaWebErrorId::UnverifiableToken,
-                            message: "Unable to verify token.".into(),
-                        },
-                    ));
-                }
-            };
-
-            let refresh_id = claims.subject.expect("Unable to find subject claim.");
-
-            let refresh = services.persons.get_token_record(refresh_id).await;
-
-            if let Some(current_person) = services.persons.get_person(refresh.person).await {
-                // insert the current user into a request extension so the handler can extract it
-                req.extensions_mut().insert(current_person);
-
-                return Ok(next.run(req).await);
-            } else {
-                return Err((
-                    StatusCode::NOT_FOUND,
-                    NovaWebError {
-                        id: NovaWebErrorId::NotFound,
-                        message: "Unable to find subject of token.".into(),
-                    },
-                ));
-            }
-        }
-    }
-
-    Err((
-        StatusCode::BAD_REQUEST,
-        NovaWebError {
-            id: NovaWebErrorId::MissingRefreshToken,
-            message: "Missing refresh token.".into(),
-        },
-    ))
-}
-
+#[instrument(skip(req))]
 fn get_authorization_header(req: &Request) -> Result<String, String> {
     let auth_header = req
         .headers()
@@ -236,16 +151,53 @@ fn get_authorization_header(req: &Request) -> Result<String, String> {
     }
 }
 
+#[instrument(skip(token))]
 fn verify_token(token: &String) -> Result<JWTClaims<CustomClaims>, jwt_simple::Error> {
-    let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
+    let secret = env::var(NB_SECRET_KEY).expect("cannot find NOVA_SECRET");
     let key = HS256Key::from_bytes(secret.as_bytes());
 
-    key.verify_token::<CustomClaims>(&token, None)
+    key.verify_token::<CustomClaims>(
+        &token,
+        Some(VerificationOptions {
+            time_tolerance: Some(Duration::from_mins(0)),
+            ..Default::default()
+        }),
+    )
 }
 
-fn verify_refresh_token(token: &String) -> Result<JWTClaims<NoCustomClaims>, jwt_simple::Error> {
-    let secret = env::var("NOVA_SECRET").expect("cannot find NOVA_SECRET");
-    let key = HS256Key::from_bytes(secret.as_bytes());
+// A `MakeRequestId` that increments an atomic counter
+#[derive(Clone, Default)]
+pub struct MyMakeRequestId {
+    counter: Arc<AtomicU64>,
+}
 
-    key.verify_token(&token, None)
+impl MakeRequestId for MyMakeRequestId {
+    fn make_request_id<B>(&mut self, _request: &Request<B>) -> Option<RequestId> {
+        let request_id = self
+            .counter
+            .fetch_add(1, Ordering::SeqCst)
+            .to_string()
+            .parse()
+            .unwrap();
+
+        Some(RequestId::new(request_id))
+    }
+}
+
+pub fn get_request_id_service() -> ServiceBuilder<
+    Stack<
+        PropagateRequestIdLayer,
+        Stack<SetRequestIdLayer<MyMakeRequestId>, tower::layer::util::Identity>,
+    >,
+> {
+    let x_request_id = HeaderName::from_static("x-request-id");
+
+    ServiceBuilder::new()
+        // set `x-request-id` header on all requests
+        .layer(SetRequestIdLayer::new(
+            x_request_id.clone(),
+            MyMakeRequestId::default(),
+        ))
+        // propagate `x-request-id` headers from request to response
+        .layer(PropagateRequestIdLayer::new(x_request_id))
 }
