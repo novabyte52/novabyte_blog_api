@@ -100,8 +100,12 @@ pub async fn logout_person(
     State(services): State<NbBlogServices>,
     jar: CookieJar,
     current_person: Extension<Person>,
-    person_id: String,
+    Path(person_id): Path<String>,
 ) -> impl IntoResponse {
+    info!(
+        "Authenticated persons: {} | Attempting to logout: {}",
+        &current_person.id, &person_id
+    );
     if current_person.id != person_id {
         return Err((StatusCode::FORBIDDEN, jar, Json(false)));
     }
