@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - dev
+      - deploy
   workflow_dispatch:
     inputs:
       environment:
