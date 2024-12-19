@@ -9,3 +9,5 @@ pub const NB_DB_NAMESPACE: &str = "DB_NAMESPACE";
 pub const NB_DB_NAME: &str = "DB_NAME";
 pub const NB_SERVER_ADDRESS: &str = "SERVER_ADDRESS";
 pub const NB_ALLOWED_ORIGIN: &str = "ALLOWED_ORIGIN";
+pub const NB_TLS_CERT: &str = "TLS_CERT";
+pub const NB_TLS_KEY: &str = "TLS_KEY";

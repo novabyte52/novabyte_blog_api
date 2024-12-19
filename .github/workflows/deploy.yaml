@@ -1,0 +1,84 @@
+name: Deploy Rust API
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to (e.g., staging or production)."
+        required: true
+        default: "stage"
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy API
+    runs-on: ubuntu-latest
+
+    env:
+      CARGO_HOME: ${{ runner.temp }}/cargo
+      RUSTUP_HOME: ${{ runner.temp }}/rustup
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install Dependencies
+      run: cargo fetch
+
+    - name: Build Release
+      run: cargo build --release
+
+    - name: Generate .env File
+      run: |
+        echo "Generating .env file"
+        cat <<EOT > .env
+        NOVA_SECRET=${{ secrets.NOVA_SECRET }}
+        REFRESH_DURATION_MINUTES=${{ vars.REFRESH_DURATION_MINUTES }}
+        JWT_DURATION_MINUTES=${{ vars.JWT_DURATION_MINUTES }}
+        DB_ADDRESS=${{ vars.DB_ADDRESS }}
+        DB_NAME=${{ vars.DB_NAME }}
+        DB_NAMESPACE=${{ vars.DB_NAMESPACE }}
+        DB_USER=${{ secrets.DB_USER }}
+        DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+        SERVER_ADDRESS=${{ vars.SERVER_ADDRESS }}
+        SERVER_PORT=${{ vars.SERVER_PORT }}
+        ALLOWED_ORIGIN=${{ vars.ALLOWED_ORIGIN }}
+        USE_TLS=${{ vars.USE_TLS }}
+        TLS_CERT=${{ vars.TLS_CERT }}
+        TLS_KEY=${{ vars.TLS_KEY }}
+        RUST_LOG=${{ vars.RUST_LOG }}
+        EOT
+
+    - name: Deploy to ${{ github.event.inputs.environment }} via SSH
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        SSH_HOST: ${{ secrets.SSH_HOST }}
+        SSH_USER: ${{ secrets.SSH_USER }}
+        API_SYSTEMD_SERVICE: ${{ secrets.API_SYSTEMD_SERVICE }}
+      run: |
+        echo "Setting up SSH"
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
+
+        echo "Transferring files to server"
+        scp -r target/release/nb_blog_api $SSH_USER@$SSH_HOST:/home/novabyte
+        scp .env $SSH_USER@$SSH_HOST:/srv/api/.env
+
+        ssh $SSH_USER@$SSH_HOST << EOF
+          echo "Restarting API Service"
+          echo "$SERVER_PASS" | sudo systemctl stop $API_SYSTEMD_SERVICE
+          echo "$SERVER_PASS" | sudo mv /home/novabyte/nb_blog_api /srv/www/api
+          echo "$SERVER_PASS" | sudo chmod +x /srv/api/nb_blog_api
+          echo "$SERVER_PASS" | sudo systemctl start $API_SYSTEMD_SERVICE
+          echo "$SERVER_PASS" | sudo systemctl status $API_SYSTEMD_SERVICE
+        EOF

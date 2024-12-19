@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{env, net::SocketAddr};
 
 use axum::{
     extract::{MatchedPath, Request},
@@ -13,7 +13,7 @@ use axum::{
 use axum_server::tls_rustls::RustlsConfig;
 use constants::{
     NB_ALLOWED_ORIGIN, NB_DB_ADDRESS, NB_DB_NAME, NB_DB_NAMESPACE, NB_DB_PSWD, NB_DB_USER,
-    NB_SERVER_ADDRESS,
+    NB_SERVER_ADDRESS, NB_TLS_CERT, NB_TLS_KEY,
 };
 use include_dir::include_dir;
 use nb_lib::{
@@ -247,8 +247,8 @@ async fn serve(app: Router, port: u16) {
         .expect("Unable to load default crypto provider!");
 
         let tls_conf = RustlsConfig::from_pem_file(
-            "../novabyte.blog.api.cert.pem",
-            "../novabyte.blog.api.key.pem",
+            env::var(NB_TLS_CERT).expect("TLS Cert path not set!"),
+            env::var(NB_TLS_KEY).expect("TLS Key path not set!"),
         )
         .await
         .expect("Unable to create TLS config!");

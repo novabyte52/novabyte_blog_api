@@ -42,37 +42,14 @@ args = ["clean"]
 command = "cargo"
 args = ["build"]
 
-[tasks.bundle]
-script = """
-mkdir -p target/release/dist
-cp run.sh target/release/dist
-mv target/release/nb_blog_api target/release/dist
-"""
-
 [tasks.release]
 command = "cargo"
 args = ["build", "--release"]
 
-[tasks.ship]
-dependencies = ["release", "bundle"]
-
 [tasks.run]
 command = "cargo"
 args = [
-    "run",
-    # "NOVA_SECRET=${NOVA_SECRET}",
-    # "JWT_DURATION_MINUTES=${JWT_DURATION_MINUTES}",
-    # "REFRESH_DURATION_DAYS=${REFRESH_DURATION_DAYS}",
-    # "RUST_LOG=${RUST_LOG}",
-    # "SERVER_ADDRESS=${SERVER_ADDRESS}",
-    # "SERVER_PORT=${SERVER_PORT}",
-    # "DB_ADDRESS=${DB_ADDRESS}",
-    # "DB_USER=${DB_USER}",
-    # "DB_PASSWORD=${DB_PASSWORD}",
-    # "DB_NAMESPACE=${DB_NAMESPACE}",
-    # "DB_NAME=${DB_NAME}",
-    # "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}",
-    # "USE_TLS=false",
+    "run"
 ]
 
 [tasks.refresh]
