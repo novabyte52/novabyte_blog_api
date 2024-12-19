@@ -7,14 +7,19 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to deploy to (e.g., staging or production)."
+        description: 'Environment to deploy to (e.g., staging or production).'
         required: true
-        default: "stage"
+        default: stage
+        type: choice
+        options:
+          - stage
+          - prod
 
 jobs:
   build-and-deploy:
     name: Build and Deploy API
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
 
     env:
       CARGO_HOME: ${{ runner.temp }}/cargo
