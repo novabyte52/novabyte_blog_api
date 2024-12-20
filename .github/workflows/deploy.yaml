@@ -22,8 +22,8 @@ jobs:
     environment: ${{ github.event.inputs.environment }}
 
     env:
-      CARGO_HOME: ${{ runner.temp }}/cargo
-      RUSTUP_HOME: ${{ runner.temp }}/rustup
+      CARGO_HOME: tmp/cargo
+      RUSTUP_HOME: tmp/rustup
 
     steps:
     - name: Checkout Code
