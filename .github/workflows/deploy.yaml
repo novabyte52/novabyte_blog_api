@@ -64,12 +64,21 @@ jobs:
         SSH_HOST: ${{ secrets.SSH_HOST }}
         SSH_USER: ${{ secrets.SSH_USER }}
         API_SYSTEMD_SERVICE: ${{ secrets.API_SYSTEMD_SERVICE }}
+        SERVER_PASS: ${{ secrets.SERVER_PASS }}
       run: |
         echo "Setting up SSH"
         mkdir -p ~/.ssh
         echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
+
+        ssh $SSH_USER@$SSH_HOST << EOF
+            echo "Creating and navigating to directory"
+            echo "$SERVER_PASS" | sudo -S mkdir -p /srv/www/api
+            cd /srv/www/api
+            echo "Removing old files"
+            echo "$SERVER_PASS" | sudo -S rm -rf ./*
+          EOF
 
         echo "Transferring files to server"
         scp -r target/release/nb_blog_api $SSH_USER@$SSH_HOST:/home/novabyte
