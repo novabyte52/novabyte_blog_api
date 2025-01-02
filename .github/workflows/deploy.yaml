@@ -1,4 +1,4 @@
-name: Deploy Rust API
+name: Deploy Novabyte Blog API
 
 on:
   push:
