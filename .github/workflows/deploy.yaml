@@ -64,23 +64,21 @@ jobs:
         SSH_HOST: ${{ secrets.SSH_HOST }}
         SSH_USER: deploy
       run: |
+        set -x
         echo "Setting up SSH"
-        mkdir -p ~/.ssh
-        echo "Create .ssh dir"
-        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-        echo "Put private key in file"
-        chmod 600 ~/.ssh/id_rsa
-        echo "Changed private key perms"
-        ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
-        echo "Added key to known hosts"
+        mkdir -p ~/.ssh && echo "Created .ssh directory"
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa && echo "Private key written to file"
+        chmod 600 ~/.ssh/id_rsa && echo "Private key permissions set"
+        ssh-keyscan -v -H $SSH_HOST >> ~/.ssh/known_hosts && echo "SSH host key added to known_hosts"
 
         echo "Conditioning directories"
-        ssh -v deploy@$SSH_HOST "mkdir -p /srv/www/api"
-        ssh -v deploy@$SSH_HOST "rm -rf /srv/www/api/*"
+        ssh -v $SSH_USER@$SSH_HOST "mkdir -p /srv/www/api" && echo "Created /srv/www/api directory on server"
+        ssh -v $SSH_USER@$SSH_HOST "rm -rf /srv/www/api/*" && echo "Cleared /srv/www/api directory on server"
 
         echo "Transferring files to server"
-        scp -r target/release/nb_blog_api deploy@$SSH_HOST:/srv/www/api
-        scp -r .env deploy@$SSH_HOST:/srv/www/api
+        scp -v -r target/release/nb_blog_api $SSH_USER@$SSH_HOST:/srv/www/api && echo "Binary transferred"
+        scp -v -r .env $SSH_USER@$SSH_HOST:/srv/www/api && echo ".env file transferred"
 
-        echo "Starting api"
-        ssh -v deploy@$SSH_HOST "sudo systemctl restart api.service"
+        echo "Starting API"
+        ssh -v $SSH_USER@$SSH_HOST "sudo systemctl restart api.service" && echo "API service restarted"
+
