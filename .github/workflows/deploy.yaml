@@ -70,7 +70,7 @@ jobs:
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
 
-        ssh deploy@$SSH_HOST "mkdir /srv/www/api"
+        ssh deploy@$SSH_HOST "mkdir -p /srv/www/api"
         ssh deploy@$SSH_HOST "rm -rf /srv/www/api/*"
 
         echo "Transferring files to server"
