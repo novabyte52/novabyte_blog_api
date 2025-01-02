@@ -76,8 +76,8 @@ jobs:
         ssh -v $SSH_USER@$SSH_HOST "rm -rf /srv/www/api/*" && echo "Cleared /srv/www/api directory on server"
 
         echo "Transferring files to server"
-        scp -v -r target/release/nb_blog_api $SSH_USER@$SSH_HOST:/srv/www/api && echo "Binary transferred"
-        scp -v -r .env $SSH_USER@$SSH_HOST:/srv/www/api && echo ".env file transferred"
+        scp -r target/release/nb_blog_api $SSH_USER@$SSH_HOST:/srv/www/api && echo "Binary transferred"
+        scp -r .env $SSH_USER@$SSH_HOST:/srv/www/api && echo ".env file transferred"
 
         echo "Starting API"
         ssh -v $SSH_USER@$SSH_HOST "sudo systemctl restart api.service" && echo "API service restarted"
