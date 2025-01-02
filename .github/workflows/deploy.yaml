@@ -23,7 +23,7 @@ jobs:
 
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Rust
       uses: actions-rs/toolchain@v1
@@ -60,11 +60,9 @@ jobs:
 
     - name: Deploy to ${{ github.event.inputs.environment }} via SSH
       env:
-        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
         SSH_HOST: ${{ secrets.SSH_HOST }}
-        SSH_USER: ${{ secrets.SSH_USER }}
-        API_SYSTEMD_SERVICE: ${{ secrets.API_SYSTEMD_SERVICE }}
-        SERVER_PASS: ${{ secrets.SERVER_PASS }}
+        SSH_USER: deploy
       run: |
         echo "Setting up SSH"
         mkdir -p ~/.ssh
@@ -72,23 +70,11 @@ jobs:
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
 
-        ssh $SSH_USER@$SSH_HOST << EOF
-            echo "Creating and navigating to directory"
-            echo "$SERVER_PASS" | sudo -S mkdir -p /srv/www/api
-            cd /srv/www/api
-            echo "Removing old files"
-            echo "$SERVER_PASS" | sudo -S rm -rf ./*
-          EOF
+        ssh deploy@$SSH_HOST "mkdir -p /srv/www/api"
+        ssh deploy@$SSH_HOST "rm -rf /srv/www/api/*"
 
         echo "Transferring files to server"
-        scp -r target/release/nb_blog_api $SSH_USER@$SSH_HOST:/home/novabyte
-        scp .env $SSH_USER@$SSH_HOST:/srv/api/.env
+        scp target/release/nb_blog_api deploy@$SSH_HOST:/srv/www/api/
+        scp .env deploy@$SSH_HOST:/srv/www/api/.env
 
-        ssh $SSH_USER@$SSH_HOST << EOF
-          echo "Restarting API Service"
-          echo "$SERVER_PASS" | sudo systemctl stop $API_SYSTEMD_SERVICE
-          echo "$SERVER_PASS" | sudo mv /home/novabyte/nb_blog_api /srv/www/api
-          echo "$SERVER_PASS" | sudo chmod +x /srv/api/nb_blog_api
-          echo "$SERVER_PASS" | sudo systemctl start $API_SYSTEMD_SERVICE
-          echo "$SERVER_PASS" | sudo systemctl status $API_SYSTEMD_SERVICE
-        EOF
+        ssh deploy@$SSH_HOST "sudo systemctl restart api.service"
