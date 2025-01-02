@@ -60,7 +60,7 @@ jobs:
 
     - name: Deploy to ${{ github.event.inputs.environment }} via SSH
       env:
-        SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         SSH_HOST: ${{ secrets.SSH_HOST }}
         SSH_USER: deploy
       run: |
