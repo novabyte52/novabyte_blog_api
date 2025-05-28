@@ -56,6 +56,28 @@ args = [
     "run"
 ]
 
+[tasks.docker-build]
+command = "docker"
+args = [
+    "build",
+    "-t",
+    "novabyte-api:latest",
+    "."
+]
+
+[tasks.docker-run]
+command = "docker"
+args = [
+    "run",
+    "--rm",
+    "-it",
+    "-p",
+    "52001:52001",
+    "--env-file",
+    ".env",
+    "novabyte-api:latest"
+]
+
 [tasks.refresh]
 dependencies = ["format", "run"]
 
