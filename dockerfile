@@ -1,5 +1,5 @@
 # ---- Build Stage ----
-FROM rust:1.83.0 as builder
+FROM rust:1.89-bookworm as builder
 
 WORKDIR /app
 
@@ -17,23 +17,17 @@ RUN cargo build --release
 
 # ---- Runtime Stage ----
 FROM debian:bookworm-slim
-
 WORKDIR /app
 
-# Install needed SSL libraries
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+# Common runtime libs for TLS + time + DNS metadata
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates tzdata libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the release binary from the builder
 COPY --from=builder /app/target/release/nb_blog_api /app/nb_blog_api
 
-# Copy any static assets/config if needed (optional)
-# COPY ./migrations ./migrations
-
-# Set env vars (override with docker-compose or -e)
 ENV RUST_LOG=nb_blog_api=info,nb_lib=info
 
-# Expose API port
 EXPOSE 52001
 
-# Entrypoint
 CMD ["./nb_blog_api"]
