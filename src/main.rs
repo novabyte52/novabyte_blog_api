@@ -52,7 +52,6 @@ use utils::get_env;
 async fn main() {
     if !dotenv::dotenv().is_ok() {
         error!("unable to load .env");
-        panic!();
     }
 
     // initialize tracing

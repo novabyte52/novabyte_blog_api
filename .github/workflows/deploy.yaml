@@ -1,4 +1,4 @@
-name: Deploy Rust API
+name: Deploy Novabyte Blog API
 
 on:
   push:
@@ -7,34 +7,23 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to deploy to (e.g., staging or production)."
+        description: 'Environment to deploy to (e.g., staging or production).'
         required: true
-        default: "stage"
+        default: stage
+        type: choice
+        options:
+          - stage
+          - prod
 
 jobs:
   build-and-deploy:
     name: Build and Deploy API
     runs-on: ubuntu-latest
-
-    env:
-      CARGO_HOME: ${{ runner.temp }}/cargo
-      RUSTUP_HOME: ${{ runner.temp }}/rustup
+    environment: ${{ github.event.inputs.environment }}
 
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v3
-
-    - name: Set up Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
-
-    - name: Install Dependencies
-      run: cargo fetch
-
-    - name: Build Release
-      run: cargo build --release
+      uses: actions/checkout@v4
 
     - name: Generate .env File
       run: |
@@ -56,29 +45,40 @@ jobs:
         TLS_KEY=${{ vars.TLS_KEY }}
         RUST_LOG=${{ vars.RUST_LOG }}
         EOT
+    
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install Dependencies
+      run: cargo fetch
+
+    - name: Build Release
+      run: cargo build --release
 
     - name: Deploy to ${{ github.event.inputs.environment }} via SSH
       env:
         SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         SSH_HOST: ${{ secrets.SSH_HOST }}
-        SSH_USER: ${{ secrets.SSH_USER }}
-        API_SYSTEMD_SERVICE: ${{ secrets.API_SYSTEMD_SERVICE }}
+        SSH_USER: deploy
       run: |
+        set -x
         echo "Setting up SSH"
-        mkdir -p ~/.ssh
-        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
+        mkdir -p ~/.ssh && echo "Created .ssh directory"
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa && echo "Private key written to file"
+        chmod 600 ~/.ssh/id_rsa && echo "Private key permissions set"
+        ssh-keyscan -v -H $SSH_HOST >> ~/.ssh/known_hosts && echo "SSH host key added to known_hosts"
+
+        echo "Conditioning directories"
+        ssh -v $SSH_USER@$SSH_HOST "mkdir -p /srv/www/api" && echo "Created /srv/www/api directory on server"
+        ssh -v $SSH_USER@$SSH_HOST "rm -rf /srv/www/api/*" && echo "Cleared /srv/www/api directory on server"
 
         echo "Transferring files to server"
-        scp -r target/release/nb_blog_api $SSH_USER@$SSH_HOST:/home/novabyte
-        scp .env $SSH_USER@$SSH_HOST:/srv/api/.env
+        scp -r target/release/nb_blog_api $SSH_USER@$SSH_HOST:/srv/www/api && echo "Binary transferred"
+        scp -r .env $SSH_USER@$SSH_HOST:/srv/www/api && echo ".env file transferred"
 
-        ssh $SSH_USER@$SSH_HOST << EOF
-          echo "Restarting API Service"
-          echo "$SERVER_PASS" | sudo systemctl stop $API_SYSTEMD_SERVICE
-          echo "$SERVER_PASS" | sudo mv /home/novabyte/nb_blog_api /srv/www/api
-          echo "$SERVER_PASS" | sudo chmod +x /srv/api/nb_blog_api
-          echo "$SERVER_PASS" | sudo systemctl start $API_SYSTEMD_SERVICE
-          echo "$SERVER_PASS" | sudo systemctl status $API_SYSTEMD_SERVICE
-        EOF
+        echo "Starting API"
+        ssh -v $SSH_USER@$SSH_HOST "sudo systemctl restart api.service" && echo "API service restarted"
+

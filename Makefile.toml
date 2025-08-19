@@ -9,6 +9,10 @@ args = [
     "start",
     "--log",
     "debug",
+    "--user",
+    "root",
+    "--pass",
+    "root",
     "--bind",
     "127.0.0.1:52000",
     "surrealkv://../../dbs/novabyte.blog.db",
@@ -48,9 +52,27 @@ args = ["build", "--release"]
 
 [tasks.run]
 command = "cargo"
+args = ["run"]
+
+[tasks.docker-build]
+command = "docker"
+args = ["build", "-t", "novabyte-api:latest", "."]
+
+[tasks.docker-run]
+command = "docker"
 args = [
-    "run"
+    "run",
+    "--rm",
+    "-it",
+    "-p",
+    "52001:52001",
+    "--env-file",
+    ".env",
+    "novabyte-api:latest",
 ]
+
+[tasks.docker-save]
+script = ["docker save novabyte-api:latest | xz -T0 -9 > ~/temp/nb-blog_api"]
 
 [tasks.refresh]
 dependencies = ["format", "run"]
