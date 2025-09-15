@@ -4,8 +4,9 @@ use serde::Serialize;
 use std::fmt::Debug;
 use std::usize;
 use surrealdb::engine::any::{connect, Any};
+use surrealdb::opt::auth::Database;
 use surrealdb::Error;
-use surrealdb::{opt::auth::Root, Surreal};
+use surrealdb::Surreal;
 use tracing::{info, instrument};
 
 #[instrument(skip(conn))]
@@ -30,8 +31,14 @@ impl NovaDB {
         } = conn;
 
         let db = connect(address).await.unwrap();
-        db.signin(Root { username, password }).await.unwrap();
-        db.use_ns(namespace).use_db(database).await.unwrap();
+        db.signin(Database {
+            username,
+            password,
+            namespace,
+            database,
+        })
+        .await
+        .unwrap();
 
         Self { novadb: db }
     }
