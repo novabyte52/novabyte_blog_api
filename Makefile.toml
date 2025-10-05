@@ -71,6 +71,18 @@ args = [
     "novabyte-api:latest",
 ]
 
+# "docker-compose-run": "docker compose -f ../../docker/docker-compose.yml up -d nb_ui",
+[tasks.docker-compose-run]
+command = "docker"
+args = [
+    "compose",
+    "-f",
+    "../../docker/docker-compose.yml",
+    "up",
+    "-d",
+    "nb_api",
+]
+
 [tasks.docker-save]
 script = ["docker save novabyte-api:latest | xz -T0 -9 > ~/temp/nb-blog_api"]
 
