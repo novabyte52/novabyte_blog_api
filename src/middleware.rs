@@ -126,6 +126,7 @@ pub async fn require_authentication(
 
         Ok(next.run(req).await)
     } else {
+        error!("person from token not found");
         Err((
             StatusCode::NOT_FOUND,
             Json(NovaWebError {
