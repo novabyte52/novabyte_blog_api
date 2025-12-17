@@ -1,21 +1,16 @@
-use surrealdb::sql::Thing;
-use tracing::{error, info, instrument};
-
-use crate::db::nova_db::NovaDB;
-use crate::db::SurrealDBConnection;
-use crate::models::meta::{InsertMetaArgs, Meta};
 use crate::utils::thing_from_string;
+use serde_json::json;
+use surrealdb::sql::Thing;
+
+use crate::db::nova_db::{DbOp, DbProgram};
 
 #[derive(Debug, Clone)]
 pub struct MetaRepo {
-    reader: NovaDB,
-    writer: NovaDB,
     pub select_meta_string: String,
 }
 
-fn select_meta_string() -> String {
+pub fn select_meta_string() -> String {
     r#"
-        # potential meta selection string
         meta,
         (
             SELECT
@@ -35,109 +30,86 @@ fn select_meta_string() -> String {
 }
 
 impl MetaRepo {
-    #[instrument]
-    pub async fn new(conn: &SurrealDBConnection) -> Self {
-        let reader = NovaDB::new(conn).await;
-
-        let writer = NovaDB::new(conn).await;
-
+    pub fn new() -> Self {
         Self {
-            reader,
-            writer,
             select_meta_string: select_meta_string(),
         }
     }
 
-    #[instrument(skip(self, tran_conn))]
-    pub async fn insert_meta(
-        &self,
-        new_meta: InsertMetaArgs,
-        tran_conn: Option<&NovaDB>,
-    ) -> Meta<()> {
-        let conn = match tran_conn {
-            Some(t) => t,
-            None => &self.writer,
-        };
-
-        let created_by = thing_from_string(&new_meta.created_by);
-
-        let query = conn.query_single_with_args_specify_result::<Meta<()>, (&str, Thing)>(
-            r#"
-                    LET $meta_id = meta:ulid();
-
-                    CREATE
-                        $meta_id
-                    SET
-                        created_by = $created_by;
-                    
-                    SELECT
-                        fn::string_id(id) as id,
-                        fn::string_id(created_by) as created_by,
-                        modified_on,
-                        deleted_on,
-                        *
-                    FROM meta
-                    WHERE id = $meta_id;
-                "#,
-            ("created_by", created_by),
-            2,
-        );
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                println!("=== error creating meta ===");
-                if tran_conn.is_some() {
-                    conn.cancel_tran().await;
-                    info!("transaction canceled")
-                }
-                error!("Error creating meta: {:#?}", e);
-                panic!("Error creating meta: {:#?}", e);
-            }
-        };
-
-        match response {
-            Some(m) => m,
-            None => {
-                if tran_conn.is_some() {
-                    conn.cancel_tran().await;
-                    info!("transaction canceled")
-                }
-                info!("=== ERROR ===");
-                error!("No meta returned, potential issue creating meta");
-                panic!("No meta returned, potential issue creating meta")
-            }
-        }
+    /// Create a new meta record and store its Thing in a variable you choose.
+    ///
+    /// Example: meta.op_create_meta("$meta_id", "created_by")
+    pub fn op_create_meta(&self, meta_var: &str) -> DbOp {
+        DbOp::new(
+            "meta.create",
+            format!(
+                r#"
+                LET {meta_var} = meta:ulid();
+                CREATE {meta_var}
+                SET
+                    created_by = $created_by,
+                    created_on = time::now(),
+                    modified_by = NONE,
+                    modified_on = NONE,
+                    deleted_by = NONE,
+                    deleted_on = NONE;
+                "#
+            ),
+        )
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_meta(&self, meta_id: &String) -> Option<Meta<()>> {
-        info!("r: select meta: {}", meta_id);
-
-        let meta_thing = thing_from_string(meta_id);
-
-        let query = self
-            .reader
-            .query_single_with_args::<Meta<()>, (&str, Thing)>(
+    /// Select a Meta<()> by id var (Thing var) and RETURN it.
+    pub fn op_return_meta_by_var(&self, meta_var: &str) -> DbOp {
+        DbOp::new(
+            "meta.return",
+            format!(
                 r#"
+                RETURN (
                     SELECT
                         fn::string_id(id) as id,
                         fn::string_id(created_by) as created_by,
                         modified_on,
                         deleted_on,
                         *
-                    FROM meta
-                    WHERE id = $id
-                "#,
-                ("id", meta_thing),
-            );
+                    FROM ONLY meta
+                    WHERE id = {meta_var}
+                    LIMIT 1
+                )[0];
+                "#
+            ),
+        )
+    }
 
-        match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error selecting meta: {:#?}", e);
-                panic!()
-            }
-        }
+    /// Convenience: a standalone “select meta by id” program (for reads)
+    pub fn program_select_meta(&self, meta_id: &String) -> DbProgram {
+        DbProgram::new()
+            .op(DbOp::new(
+                "meta.select",
+                r#"
+                SELECT
+                    fn::string_id(id) as id,
+                    fn::string_id(created_by) as created_by,
+                    modified_on,
+                    deleted_on,
+                    *
+                FROM ONLY meta
+                WHERE id = $id
+                LIMIT 1;
+                "#,
+            ))
+            .bind_serde(json!({ "id": thing_from_string(meta_id) }))
+            .expect("binding meta_id should be serializable")
+    }
+
+    /// Helper for callers that want to pre-bind `created_by` as a Thing.
+    pub fn bind_created_by(program: DbProgram, created_by: String, bind_name: &str) -> DbProgram {
+        program
+            .bind_serde(json!({ bind_name: thing_from_string(&created_by) }))
+            .expect("binding created_by should be serializable")
+    }
+
+    /// If you need the Thing for created_by as a parameter type.
+    pub fn created_by_thing(created_by: String) -> Thing {
+        thing_from_string(&created_by)
     }
 }

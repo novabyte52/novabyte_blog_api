@@ -1,491 +1,281 @@
 use std::collections::HashMap;
 
 use surrealdb::sql::Thing;
-use tracing::{error, info, instrument};
+use time::OffsetDateTime;
 
-use crate::db::nova_db::NovaDB;
-use crate::db::SurrealDBConnection;
-use crate::models::meta::InsertMetaArgs;
-use crate::models::person::{
-    InsertPersonArgs, Person, PersonCheck, PersonCheckResponse, SelectPersonArgs, SignUpState,
-};
-use crate::models::token::{InsertTokenArgs, SetSignedTokenArgs, Token, TokenRecord};
-use crate::repos::r_meta::MetaRepo;
+use crate::db::nova_db::{DbOp, DbProgram};
+use crate::models::person::SignUpState;
+use crate::models::token::{Token, TokenRecord};
 use crate::utils::thing_from_string;
+
+use super::r_meta::MetaRepo;
 
 #[derive(Debug, Clone)]
 pub struct PersonsRepo {
-    reader: NovaDB,
-    writer: NovaDB,
     meta: MetaRepo,
 }
 
 impl PersonsRepo {
-    #[instrument]
-    pub async fn new(conn: &SurrealDBConnection) -> Self {
-        let reader = NovaDB::new(conn).await;
-
-        let writer = NovaDB::new(conn).await;
-
+    pub fn new() -> Self {
         Self {
-            reader,
-            writer,
-            meta: MetaRepo::new(conn).await,
+            meta: MetaRepo::new(),
         }
     }
 
-    #[instrument(skip(self))]
-    pub async fn is_unique_email<'b>(&self, email: &'b String) -> bool {
-        let query = self.reader.query_single_with_args::<bool, (&str, String)>(
-            r#"
-                    IF string::is::email($email) {    
-                        LET $count = (
-                            SELECT
-                                count(email)
-                            FROM ONLY person
-                            WHERE email = $email
-                            LIMIT 1
-                        ).count;
-                        
-                        RETURN $count IS NONE;
-                    } ELSE {
-                        RETURN false;
-                    };
-                "#,
-            ("email", email.clone()),
-        );
-
-        let response = match query.await {
-            Ok(c) => c,
-            Err(e) => {
-                error!("Error checking validity of email: {:#?}", e);
-                panic!();
-            }
-        };
-
-        match response {
-            Some(c) => c,
-            None => false,
-        }
-    }
-
-    #[instrument(skip(self))]
-    pub async fn is_unique_username(&self, username: &String) -> bool {
-        let query = self
-            .reader
-            .query_single_with_args_specify_result::<bool, (&str, String)>(
-                r#" 
+    /// Program: check whether email is unique (returns bool).
+    pub fn program_is_unique_email(&self, email: &str) -> DbProgram {
+        DbProgram::new()
+            .op(DbOp::new(
+                "person.unique_email",
+                r#"
+                IF string::is::email($email) {
                     LET $count = (
-                        SELECT
-                            count(username)
+                        SELECT count(email)
                         FROM ONLY person
-                        WHERE username = $username
+                        WHERE email = $email
                         LIMIT 1
                     ).count;
-                    
+
                     RETURN $count IS NONE;
+                } ELSE {
+                    RETURN false;
+                };
                 "#,
-                ("username", username.clone()),
-                1,
-            );
-
-        let response = match query.await {
-            Ok(c) => c,
-            Err(e) => {
-                error!("Error checking validity of username: {:#?}", e);
-                panic!();
-            }
-        };
-
-        match response {
-            Some(c) => c,
-            None => false,
-        }
+            ))
+            .bind("email", email)
+            .expect("bind email")
     }
 
-    #[instrument(skip(self, tran_conn))]
-    pub async fn insert_person(
-        &self,
-        new_person: SignUpState,
-        created_by: &str,
-        tran_conn: &NovaDB,
-    ) -> Person {
-        let pass_hash = match new_person.pass_hash {
-            Some(ph) => ph,
-            None => panic!("Can't create user without the password hash!"),
-        };
+    /// Program: check whether username is unique (returns bool).
+    pub fn program_is_unique_username(&self, username: &str) -> DbProgram {
+        DbProgram::new()
+            .op(DbOp::new(
+                "person.unique_username",
+                r#"
+                LET $count = (
+                    SELECT count(username)
+                    FROM ONLY person
+                    WHERE username = $username
+                    LIMIT 1
+                ).count;
 
-        let validity = self
-            .is_person_unique(PersonCheck {
-                email: Some(new_person.email.clone()),
-                username: Some(new_person.username.clone()),
-            })
-            .await;
+                RETURN $count IS NONE;
+                "#,
+            ))
+            .bind("username", username)
+            .expect("bind username")
+    }
 
-        if !validity.email || !validity.username {
-            error!("email or username invalid");
-            panic!();
-        }
+    /// Program: select person by id (returns Person).
+    pub fn program_select_person(&self, person_id: &String) -> DbProgram {
+        let q = format!(
+            "SELECT fn::string_id(id) as id, *, {} FROM ONLY person WHERE id = $id LIMIT 1;",
+            self.meta.select_meta_string
+        );
 
-        let meta = self
-            .meta
-            .insert_meta(
-                InsertMetaArgs {
-                    created_by: created_by.into(),
-                },
-                Some(tran_conn),
-            )
-            .await;
+        DbProgram::new()
+            .op(DbOp::new("person.select_by_id", q))
+            .bind_thing("id", thing_from_string(person_id))
+    }
 
-        let create_user_query = format!(
+    /// Program: select person by email (returns Person).
+    pub fn program_select_person_by_email(&self, email: &str) -> DbProgram {
+        let q = format!(
             r#"
-                LET $person_id = person:ulid();
-
-                CREATE
-                    $person_id
-                SET 
-                    email = $email,
-                    username = $username,
-                    pass_hash = $pass_hash,
-                    is_admin = false,
-                    meta = $meta;
-                
-                SELECT
-                    fn::string_id(id) as id,
-                    *,
-                    {}
-                FROM person
-                WHERE id = $person_id;
+            SELECT
+                fn::string_id(id) as id,
+                username,
+                email,
+                is_admin,
+                {}
+            FROM ONLY person
+            WHERE email = $email
+            LIMIT 1;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let create_user = tran_conn
-            .query_single_with_args_specify_result::<Person, InsertPersonArgs>(
-                &create_user_query,
-                InsertPersonArgs {
-                    email: new_person.email,
-                    username: new_person.username,
-                    pass_hash,
-                    meta: thing_from_string(&meta.id),
-                },
-                2,
-            );
-
-        let response = match create_user.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error creating person: {:#?}", e);
-                panic!()
-            }
-        };
-
-        match response {
-            Some(p) => p,
-            None => panic!("No person returned, potential issue creating person"),
-        }
+        DbProgram::new()
+            .op(DbOp::new("person.select_by_email", q))
+            .bind("email", email)
+            .expect("bind email")
     }
 
-    pub async fn is_person_unique(&self, check: PersonCheck) -> PersonCheckResponse {
-        let mut check_response = PersonCheckResponse {
-            email: false,
-            username: false,
-        };
-
-        if let Some(email) = &check.email {
-            check_response.email = self.is_unique_email(email).await;
-        };
-
-        if let Some(username) = &check.username {
-            check_response.username = self.is_unique_username(username).await;
-        };
-
-        check_response
+    /// Program: select person hash by email (returns pass_hash string inside a map).
+    pub fn program_select_person_hash_by_email(&self, email: &str) -> DbProgram {
+        DbProgram::new()
+            .op(DbOp::new(
+                "person.select_pass_hash",
+                r#"SELECT pass_hash FROM ONLY person WHERE email = $email LIMIT 1;"#,
+            ))
+            .bind("email", email)
+            .expect("bind email")
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_person(&self, person_id: String) -> Option<Person> {
-        info!("r: select persons: {}", person_id);
-
-        let select_person_query = format!(
-            "SELECT fn::string_id(id) as id, *, {} FROM person WHERE id = $id",
-            &self.meta.select_meta_string
+    /// Program: select all persons (returns Vec<Person>).
+    pub fn program_select_persons(&self) -> DbProgram {
+        let q = format!(
+            "SELECT fn::string_id(id) as id, *, {} FROM person;",
+            self.meta.select_meta_string
         );
-
-        let query = self.reader.query_single_with_args(
-            &select_person_query,
-            SelectPersonArgs {
-                id: thing_from_string(&person_id),
-            },
-        );
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error selecting person: {:#?}", e);
-                panic!()
-            }
-        };
-
-        match response {
-            Some(p) => p,
-            None => panic!(),
-        }
+        DbProgram::new().op(DbOp::new("person.select_all", q))
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_person_by_email(&self, email: String) -> Option<Person> {
-        info!("r: select person by email | {:#?}", &email);
+    /// Program: create a new person + meta (recommended to run in a transaction).
+    /// Returns Person as last op (RETURN).
+    pub fn program_insert_person(&self, new_person: SignUpState, created_by: &String) -> DbProgram {
+        let pass_hash = new_person
+            .pass_hash
+            .clone()
+            .expect("Can't create user without pass_hash");
 
-        let select_person_query = format!(
+        let create_user = format!(
             r#"
-                SELECT
-                    fn::string_id(id) as id,
-                    username,
-                    email,
-                    is_admin,
-                    {}
-                FROM person WHERE email = $email
+            LET $person_id = person:ulid();
+
+            CREATE $person_id
+            SET
+                email = $email,
+                username = $username,
+                pass_hash = $pass_hash,
+                is_admin = false,
+                meta = $meta_id;
+
+            SELECT
+                fn::string_id(id) as id,
+                *,
+                {}
+            FROM ONLY person
+            WHERE id = $person_id
+            LIMIT 1;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let query = self
-            .reader
-            .query_single_with_args::<Person, (String, String)>(
-                &select_person_query,
-                (String::from("email"), email),
-            );
-
-        match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error selecting person by email: {:#?}", e);
-                panic!()
-            }
-        }
+        DbProgram::new()
+            .op(self.meta.op_create_meta("$meta_id"))
+            .op(DbOp::new("person.create", create_user))
+            .bind_thing("created_by", thing_from_string(created_by))
+            .bind("email", new_person.email)
+            .expect("bind email")
+            .bind("username", new_person.username)
+            .expect("bind username")
+            .bind("pass_hash", pass_hash)
+            .expect("bind pass_hash")
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_person_hash_by_email(&self, email: String) -> String {
-        info!("r: select person hash by email");
-
-        let query = self
-            .reader
-            .query_single_with_args::<HashMap<String, String>, (String, String)>(
-                "SELECT pass_hash FROM person WHERE email = $email",
-                (String::from("email"), email),
-            );
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error selecting hash with email: {:#?}", e);
-                panic!()
-            }
-        };
-
-        match response {
-            Some(h) => match h.get("pass_hash") {
-                Some(h) => h.to_string(),
-                None => panic!("No person hash found in map"),
-            },
-            None => panic!("No person hash record found"),
-        }
-    }
-
-    #[instrument(skip(self))]
-    pub async fn select_persons(&self) -> Vec<Person> {
-        info!("r: select posts");
-
-        let select_persons_query = format!(
-            "SELECT fn::string_id(id) as id, *, {} FROM person",
-            &self.meta.select_meta_string
-        );
-
-        let query = self.reader.query_many(&select_persons_query);
-
-        match query.await {
-            Ok(p) => p,
-            Err(e) => panic!("Error selecting persons: {}", e),
-        }
-    }
-
-    #[instrument(skip(self))]
-    pub async fn select_token_record(&self, token_id: String) -> Token {
-        info!("token_id: {:#?}", token_id);
-
+    /// Program: select token record (returns Token).
+    pub fn program_select_token_record(&self, token_id: &String) -> DbProgram {
         let token_query = format!(
             r#"
-                SELECT
-                    fn::string_id(id) as id,
-                    fn::string_id(person) as person,
-                    {}
-                FROM nb_token
-                WHERE id = $id;
+            SELECT
+                fn::string_id(id) as id,
+                fn::string_id(person) as person,
+                {}
+            FROM ONLY nb_token
+            WHERE id = $id
+            LIMIT 1;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let query = self.reader.query_single_with_args::<Token, (&str, Thing)>(
-            token_query.as_str(),
-            ("id", thing_from_string(&token_id)),
-        );
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Errpr selecting refresh token record: {:#?}", e);
-                panic!()
-            }
-        };
-
-        match response {
-            Some(t) => t,
-            None => panic!("No token found for token_id: {}", token_id),
-        }
+        DbProgram::new()
+            .op(DbOp::new("token.select", token_query))
+            .bind_thing("id", thing_from_string(token_id))
     }
 
-    #[instrument(skip(self, tran_conn))]
-    pub async fn insert_token_record(&self, person_id: String, tran_conn: &NovaDB) -> TokenRecord {
-        let meta = self
-            .meta
-            .insert_meta(
-                InsertMetaArgs {
-                    created_by: person_id.clone(),
-                },
-                Some(tran_conn),
-            )
-            .await;
-
-        let query = tran_conn.query_single_with_args_specify_result::<Thing, InsertTokenArgs>(
-            r#"
-                    LET $token_id = nb_token:ulid();
-                    CREATE
-                        $token_id
-                    SET 
-                        person = $person,
-                        meta = $meta;
-                    
-                    RETURN $token_id;
-                "#,
-            InsertTokenArgs {
-                person: thing_from_string(&person_id),
-                meta: thing_from_string(&meta.id),
-            },
-            2,
-        );
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                tran_conn.cancel_tran().await;
-                error!("Unable to get token id, cancelling transaction: {:#?}", e);
-                panic!();
-            }
-        };
-
-        let token_thing = match response {
-            Some(t) => t,
-            None => {
-                tran_conn.cancel_tran().await;
-                error!("Unable to get token id, cancelling transaction");
-                panic!();
-            }
-        };
-
-        let token = self.select_token_record(token_thing.to_string()).await;
-
-        let meta = match self.meta.select_meta(&token.meta.id).await {
-            Some(m) => m,
-            None => panic!("Meta not found!"),
-        };
-
-        TokenRecord {
-            id: token.id.to_string(),
-            person: token.person.to_string(),
-            created_by: thing_from_string(&meta.created_by),
-            created_on: meta.created_on,
-            deleted_on: meta.deleted_on,
-            meta: thing_from_string(&meta.id),
-        }
-    }
-
-    #[instrument(skip(self))]
-    pub async fn set_signed_token(&self, token_id: String, signed_token: String) -> bool {
-        let query = self
-            .writer
-            .query_single_with_args_specify_result::<Token, SetSignedTokenArgs>(
+    /// Program: insert token record (meta + token) and RETURN the token id (Thing).
+    pub fn program_insert_token_record(&self, person_id: &String) -> DbProgram {
+        DbProgram::new()
+            .op(self.meta.op_create_meta("$meta_id"))
+            .op(DbOp::new(
+                "token.create",
                 r#"
-                    UPDATE $token_id
-                    SET
-                        signed_token = $signed_token;
-                    
-                    SELECT * FROM nb_token WHERE token_id = $token_id FETCH meta;
+                LET $token_id = nb_token:ulid();
+
+                CREATE $token_id
+                SET
+                    person = $person,
+                    meta = $meta_id;
+
+                RETURN $token_id;
                 "#,
-                SetSignedTokenArgs {
-                    token_id: thing_from_string(&token_id),
-                    signed_token,
-                },
-                1,
-            );
-
-        match query.await {
-            Ok(_t) => true,
-            Err(e) => {
-                error!("Unable to set token for {}: {}", token_id, e);
-                return false;
-            }
-        }
+            ))
+            .bind_thing("created_by", thing_from_string(person_id))
+            .bind_thing("person", thing_from_string(person_id))
     }
 
-    #[instrument(skip(self))]
-    pub async fn soft_delete_token_record(&self, token_id: &String) -> bool {
-        let query = self.writer.query_none_with_args(
-            r#"
-                LET $meta_id = (SELECT meta FROM nb_token WHERE id = $token_id);
-                UPDATE $meta_id.meta SET deleted_on = time::now();
-            "#,
-            ("token_id", thing_from_string(token_id)),
-        );
+    /// Program: set signed token (returns Token).
+    pub fn program_set_signed_token(&self, token_id: &String, signed_token: &str) -> DbProgram {
+        DbProgram::new()
+            .op(DbOp::new(
+                "token.set_signed",
+                r#"
+                UPDATE $token_id
+                SET signed_token = $signed_token;
 
-        match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error deleting token: {:#?}", e);
-                panic!()
-            }
-        }
+                SELECT * FROM ONLY nb_token WHERE id = $token_id LIMIT 1;
+                "#,
+            ))
+            .bind_thing("token_id", thing_from_string(token_id))
+            .bind("signed_token", signed_token)
+            .expect("bind signed_token")
     }
 
-    #[instrument(skip(self, tran_conn))]
-    pub async fn delete_all_sessions_for_person(
-        &self,
-        person_id: String,
-        tran_conn: Option<&NovaDB>,
-    ) -> bool {
-        let conn = match tran_conn {
-            Some(t) => t,
-            None => &self.writer,
-        };
+    /// Program: soft-delete token record via meta.deleted_on (returns true).
+    pub fn program_soft_delete_token_record(&self, token_id: &String) -> DbProgram {
+        DbProgram::new()
+            .op(DbOp::new(
+                "token.soft_delete",
+                r#"
+                LET $meta_id = (SELECT meta FROM ONLY nb_token WHERE id = $token_id LIMIT 1).meta;
+                UPDATE $meta_id SET deleted_on = time::now();
+                RETURN true;
+                "#,
+            ))
+            .bind_thing("token_id", thing_from_string(token_id))
+    }
 
-        let query = conn.query_none_with_args(
-            r#"
+    /// Program: delete all sessions for person (updates meta records) returns true.
+    pub fn program_delete_all_sessions_for_person(&self, person_id: &String) -> DbProgram {
+        DbProgram::new()
+            .op(DbOp::new(
+                "token.delete_all_sessions_for_person",
+                r#"
                 UPDATE meta
                 SET
                     deleted_on = time::now(),
                     deleted_by = $person_id
-                WHERE id IN (SELECT meta FROM nb_token WHERE person = $person_id).meta;
-            "#,
-            ("person_id", thing_from_string(&person_id)),
-        );
+                WHERE id IN (SELECT meta FROM nb_token WHERE person = $person_id).meta
+                RETURN true;
+                "#,
+            ))
+            .bind_thing("person_id", thing_from_string(person_id))
+    }
 
-        match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error deleting all tokens for person: {:#?}", e);
-                panic!()
-            }
+    // ---- helpers ----
+
+    pub fn extract_pass_hash(row: Option<HashMap<String, String>>) -> String {
+        match row.and_then(|m| m.get("pass_hash").cloned()) {
+            Some(h) => h,
+            None => panic!("No person hash found"),
+        }
+    }
+
+    pub fn make_token_record(
+        token: Token,
+        created_by: Thing,
+        created_on: OffsetDateTime,
+        deleted_on: Option<OffsetDateTime>,
+        meta: Thing,
+    ) -> TokenRecord {
+        TokenRecord {
+            id: token.id.to_string(),
+            person: token.person.to_string(),
+            created_by,
+            created_on,
+            deleted_on,
+            meta,
         }
     }
 }
