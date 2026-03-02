@@ -1,4 +1,3 @@
-@CompileStatic
 pipeline {
     agent any
 
