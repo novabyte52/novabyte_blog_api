@@ -5,9 +5,9 @@ pipeline {
         stage('Build') {
             steps {
                 echo 'Building...'
-                sh 'docker save novabyte-api:latest -o nb-api_docker-image'
-                sh 'xz -T0 -9 nb-api_docker-image > nb-blog_api'
-                // zip zipFile: 'nb-blog_api.zip', dir: '.', file: 'nb-api_docker-image'
+                sh 'docker save -o nb-api_docker-image.tar novabyte-api:latest'
+                sh 'xz -T0 -9 nb-api_docker-image.tar > nb-blog_api'
+                // zip zipFile: 'nb-blog_api.zip', dir: '.', file: 'nb-api_docker-image.tar'
             }
         }
         // stage('Test') {
