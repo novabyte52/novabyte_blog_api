@@ -5,6 +5,7 @@ pipeline {
         stage('Build') {
             steps {
                 echo 'Building...'
+                sh 'docker build -t novabyte-api:latest .'
                 sh 'docker save -o nb-api_docker-image.tar novabyte-api:latest'
                 sh 'xz -T0 -9 nb-api_docker-image.tar > nb-blog_api'
                 // zip zipFile: 'nb-blog_api.zip', dir: '.', file: 'nb-api_docker-image.tar'
