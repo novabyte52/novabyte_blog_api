@@ -1,598 +1,361 @@
-// use itertools::Itertools;
 use serde::Serialize;
-use surrealdb::sql::Thing;
-use tracing::{error, info, instrument};
-
-use crate::db::nova_db::NovaDB;
-use crate::db::SurrealDBConnection;
-use crate::models::meta::{IdContainer, InsertMetaArgs};
-use crate::models::post::{Post, PostHydrated, PostVersion};
-use crate::utils::thing_from_string;
 
 use super::r_meta::MetaRepo;
+use crate::db::nova_db::{DbOp, DbProgram};
+use crate::utils::thing_from_string;
 
 #[derive(Debug, Clone)]
 pub struct PostsRepo {
-    reader: NovaDB,
-    writer: NovaDB,
-    meta: MetaRepo,
+    pub meta: MetaRepo,
 }
 
 #[derive(Debug, Serialize)]
-struct DraftedArgs {
-    person_id: Thing,
-    post_id: Thing,
-    title: String,
-    markdown: String,
-    published: bool,
-    image: String,
+pub struct DraftedArgs {
+    // pub person_id: Thing,
+    // pub post_id: Thing,
+    pub title: String,
+    pub markdown: String,
+    pub published: bool,
+    pub image: String,
 }
 
 impl PostsRepo {
-    #[instrument]
-    pub async fn new(conn: &SurrealDBConnection) -> Self {
-        let reader = NovaDB::new(conn).await;
-
-        let writer = NovaDB::new(conn).await;
-
+    pub fn new() -> Self {
         Self {
-            reader,
-            writer,
-            meta: MetaRepo::new(conn).await,
+            meta: MetaRepo::new(),
         }
     }
 
-    #[instrument(skip(self, tran_conn))]
-    pub async fn insert_post(&self, created_by: String, tran_conn: &NovaDB) -> Post {
-        info!("r: insert post");
-
-        let meta = self
-            .meta
-            .insert_meta(
-                InsertMetaArgs {
-                    created_by: created_by.clone(),
-                },
-                Some(tran_conn),
-            )
-            .await;
-
+    /// Program: create a post + meta and RETURN Post (recommended to run in a transaction).
+    pub fn program_insert_post(&self, created_by: String) -> DbProgram {
         let create_post_query = format!(
             r#"
-                LET $post_id = post:ulid();
+            LET $post_id = post:ulid();
 
-                CREATE 
-                    $post_id
-                SET
-                    meta = $meta;
-                
-                SELECT
-                    fn::string_id(id) as id,
-                    {}
-                FROM post WHERE id = $post_id;
+            CREATE $post_id
+            SET meta = $meta_id;
+
+            SELECT
+                fn::string_id(id) as id,
+                {}
+            FROM ONLY post
+            WHERE id = $post_id
+            LIMIT 1;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let query = tran_conn.query_single_with_args_specify_result::<Post, (&str, Thing)>(
-            &create_post_query,
-            ("meta", thing_from_string(&meta.id)),
-            2,
-        );
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                tran_conn.cancel_tran().await;
-                error!("Error inserting post: {:#?}", e);
-                panic!();
-            }
-        };
-
-        match response {
-            Some(p) => p,
-            None => {
-                tran_conn.cancel_tran().await;
-                error!("No post returned after creation, cancelling transaction");
-                panic!();
-            }
-        }
+        DbProgram::new()
+            .op(self.meta.op_create_meta("$meta_id"))
+            .op(DbOp::new("post.create", create_post_query))
+            .bind_thing("created_by", thing_from_string(&created_by))
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_post(&self, post_id: String) -> Post {
-        info!("r: select post: {}", post_id);
-
+    /// Program: select a post (returns Post).
+    pub fn program_select_post(&self, post_id: &String) -> DbProgram {
         let select_post_query = format!(
-            "SELECT fn::string_id(id) as id, {} FROM $post_id;",
-            &self.meta.select_meta_string
+            "SELECT fn::string_id(id) as id, {} FROM ONLY $post_id LIMIT 1;",
+            self.meta.select_meta_string
         );
 
-        let query = self
-            .reader
-            .query_single_with_args(&select_post_query, ("post_id", thing_from_string(&post_id)));
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error inserting post: {:#?}", e);
-                panic!();
-            }
-        };
-
-        match response {
-            Some(r) => r,
-            None => panic!("no post returned"),
-        }
+        DbProgram::new()
+            .op(DbOp::new("post.select", select_post_query))
+            .bind_thing("post_id", thing_from_string(post_id))
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_posts(&self) -> Vec<PostHydrated> {
-        info!("r: select posts");
-
+    /// Program: select posts (returns Vec<PostHydrated>).
+    pub fn program_select_posts(&self) -> DbProgram {
         let select_posts = format!(
             r#"
-                SELECT
-                    fn::string_id(id) as id,
-                    array::first(
-                        (
-                            SELECT
-                            at,
-                            title
-                            FROM drafted
-                            WHERE out = $parent.id
-                            ORDER BY at DESC
-                            LIMIT 1
-                        ).title
-                    ) as working_title,
-                    meta.created_on,
-                    {}
-                FROM post
-                ORDER BY meta.created_on DESC;
+            SELECT
+                fn::string_id(id) as id,
+                array::first(
+                    (
+                        SELECT at, title
+                        FROM drafted
+                        WHERE out = $parent.id
+                        ORDER BY at DESC
+                        LIMIT 1
+                    ).title
+                ) as working_title,
+                meta.created_on,
+                {}
+            FROM post
+            ORDER BY meta.created_on DESC;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let query = self.reader.query_many(&select_posts);
-
-        match query.await {
-            Ok(r) => r,
-            Err(e) => panic!("Nothing found!: {:#?}", e),
-        }
+        DbProgram::new().op(DbOp::new("post.select_all", select_posts))
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_draft(&self, draft_id: &String) -> PostVersion {
-        let select_draft = format!(
+    /// Program: select draft by draft_id (returns PostVersion).
+    pub fn program_select_draft(&self, draft_id: &String) -> DbProgram {
+        let q = format!(
             r#"
-                SELECT
-                    fn::string_id(out) as id,
-                    fn::string_id(id) as draft_id,
-                    title,
-                    markdown,
-                    at,
-                    fn::string_id(in) as author,
-                    published,
-                    image,
-                    visits,
-                    {}
-                FROM drafted
-                WHERE id = $draft_id
-                ORDER BY at DESC;
+            SELECT
+                fn::string_id(out) as id,
+                fn::string_id(id) as draft_id,
+                title,
+                markdown,
+                at,
+                fn::string_id(in) as author,
+                published,
+                image,
+                visits,
+                {}
+            FROM drafted
+            WHERE id = $draft_id
+            ORDER BY at DESC
+            LIMIT 1;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let query = self
-            .reader
-            .query_single_with_args(&select_draft, ("draft_id", thing_from_string(draft_id)));
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error inserting post: {:#?}", e);
-                panic!();
-            }
-        };
-
-        match response {
-            Some(p) => p,
-            None => panic!("No draft found for {}!", draft_id),
-        }
+        DbProgram::new()
+            .op(DbOp::new("draft.select", q))
+            .bind_thing("draft_id", thing_from_string(draft_id))
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_post_drafts(&self, post_id: String) -> Vec<PostVersion> {
-        info!("r: select post drafts");
-
-        let select_drafts = format!(
+    /// Program: select drafts for a post (returns Vec<PostVersion>).
+    pub fn program_select_post_drafts(&self, post_id: &String) -> DbProgram {
+        let q = format!(
             r#"
-                SELECT
-                    fn::string_id(out) as id,
-                    fn::string_id(id) as draft_id,
-                    title,
-                    markdown,
-                    at,
-                    fn::string_id(in) as author,
-                    published,
-                    image,
-                    visits,
-                    {}
-                FROM drafted
-                WHERE out = $post_id
-                ORDER BY at DESC;
+            SELECT
+                fn::string_id(out) as id,
+                fn::string_id(id) as draft_id,
+                title,
+                markdown,
+                at,
+                fn::string_id(in) as author,
+                published,
+                image,
+                visits,
+                {}
+            FROM drafted
+            WHERE out = $post_id
+            ORDER BY at DESC;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let query = self
-            .reader
-            .query_many_with_args(&select_drafts, ("post_id", thing_from_string(&post_id)));
-
-        match query.await {
-            Ok(p) => p,
-            Err(e) => panic!("Nothing found!: {:#?}", e),
-        }
+        DbProgram::new()
+            .op(DbOp::new("draft.select_for_post", q))
+            .bind_thing("post_id", thing_from_string(post_id))
     }
 
-    #[instrument(skip(self, tran_conn))]
-    pub async fn create_draft(
-        &self,
-        post_id: String,
-        title: String,
-        markdown: String,
-        person_id: String,
-        published: bool,
-        image: String,
-        tran_conn: Option<&NovaDB>,
-    ) -> PostVersion {
-        let conn = match tran_conn {
-            Some(t) => t,
-            None => &self.writer,
-        };
-
-        let drafted_query = format!(
+    /// Program: create a draft version for an existing post and RETURN PostVersion.
+    ///
+    /// IMPORTANT: this uses the post's meta id so draft.meta matches post.meta.
+    pub fn program_create_draft(&self) -> DbProgram {
+        let q = format!(
             r#"
-                LET $drafted_id = drafted:ulid();
-                LET $meta_id = (SELECT meta FROM ONLY post WHERE id = $post_id LIMIT 1).meta;
+            LET $drafted_id = drafted:ulid();
+            LET $meta_id = (SELECT meta FROM ONLY post WHERE id = $post_id LIMIT 1).meta;
 
-                RELATE $person_id->drafted->$post_id
-                    SET
-                        id = $drafted_id,
-                        title = $title,
-                        markdown = $markdown,
-                        published = $published,
-                        at = time::now(),
-                        image = $image,
-                        visits = 0,
-                        meta = $meta_id;
-                
-                SELECT
-                    fn::string_id(id) as draft_id,
-                    fn::string_id(in) as author,
-                    fn::string_id(out) as id,
-                    at,
-                    title,
-                    markdown,
-                    published,
-                    image,
-                    visits,
-                    {}
-                FROM drafted
-                WHERE id = $drafted_id;
-            "#,
-            &self.meta.select_meta_string
-        );
+            RELATE $person_id->drafted->$post_id
+                SET
+                    id = $drafted_id,
+                    title = $title,
+                    markdown = $markdown,
+                    published = $published,
+                    at = time::now(),
+                    image = $image,
+                    visits = 0,
+                    meta = $meta_id;
 
-        let query = conn.query_single_with_args_specify_result::<PostVersion, DraftedArgs>(
-            &drafted_query,
-            DraftedArgs {
-                person_id: thing_from_string(&person_id),
-                post_id: thing_from_string(&post_id),
+            SELECT
+                fn::string_id(id) as draft_id,
+                fn::string_id(in) as author,
+                fn::string_id(out) as id,
+                at,
                 title,
                 markdown,
                 published,
                 image,
-            },
-            3,
-        );
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                if tran_conn.is_some() {
-                    conn.cancel_tran().await;
-                    info!("Cancelling transaction")
-                }
-                error!("Error inserting draft: {:#?}", e);
-                panic!();
-            }
-        };
-
-        match response {
-            Some(p) => p,
-            None => {
-                if tran_conn.is_some() {
-                    conn.cancel_tran().await;
-                    info!("Cancelling transaction")
-                }
-                error!("Error creating draft for {}", post_id);
-                panic!();
-            }
-        }
-    }
-
-    #[instrument(skip(self))]
-    pub async fn select_drafted_posts(&self) -> Vec<PostVersion> {
-        info!("r: select drafted posts");
-
-        let select_drafts = format!(
-            r#"
-                SELECT
-                    fn::string_id(out) as id,
-                    fn::string_id(id) as draft_id,
-                    title,
-                    markdown,
-                    at,
-                    fn::string_id(in) as author,
-                    published,
-                    image,
-                    visits,
-                    {}
-                FROM drafted
-                WHERE published = false
-                ORDER BY at DESC;
+                visits,
+                {}
+            FROM ONLY drafted
+            WHERE id = $drafted_id
+            LIMIT 1;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let query = self.reader.query_many(&select_drafts);
-
-        match query.await {
-            Ok(p) => p,
-            Err(e) => panic!("error selecting drafted posts: {:#?}", e),
-        }
+        DbProgram::new().op(DbOp::new("draft.create", q))
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_current_draft(&self, post_id: String) -> PostVersion {
-        let select_draft = format!(
+    /// Program: publish a draft (returns PostVersion).
+    pub fn program_publish_draft(&self, draft_id: String) -> DbProgram {
+        let q = format!(
             r#"
-                SELECT
-                    fn::string_id(out) as id,
-                    fn::string_id(id) as draft_id,
-                    title,
-                    markdown,
-                    at,
-                    fn::string_id(in) as author,
-                    published,
-                    image,
-                    visits,
-                    {}
-                FROM drafted
-                WHERE out = $post_id
-                    AND published = false
-                ORDER BY at DESC
-                LIMIT 1;
+            UPDATE $draft_id SET published = true;
+
+            SELECT
+                fn::string_id(id) as draft_id,
+                fn::string_id(in) as author,
+                fn::string_id(out) as id,
+                at,
+                title,
+                markdown,
+                published,
+                image,
+                visits,
+                {}
+            FROM drafted
+            WHERE id = $draft_id
+            LIMIT 1;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let query = self
-            .reader
-            .query_single_with_args(&select_draft, ("post_id", thing_from_string(&post_id)));
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error selecting draft {:#?}", e);
-                panic!();
-            }
-        };
-
-        match response {
-            Some(p) => p,
-            None => panic!("Current draft version not found for {:#?}", post_id),
-        }
+        DbProgram::new()
+            .op(DbOp::new("draft.publish", q))
+            .bind_thing("draft_id", thing_from_string(&draft_id))
     }
 
-    #[instrument(skip(self, tran_conn))]
-    pub async fn publish_draft(&self, draft_id: String, tran_conn: &NovaDB) -> PostVersion {
-        info!("r: publish post");
-
-        let drafted_query = format!(
+    /// Program: unpublish a draft (returns PostVersion).
+    pub fn program_unpublish_draft(&self, draft_id: &String) -> DbProgram {
+        let q = format!(
             r#"
-                UPDATE $draft_id SET published = true;
+            UPDATE $draft_id SET published = false;
 
-                SELECT
-                    fn::string_id(id) as draft_id,
-                    fn::string_id(in) as author,
-                    fn::string_id(out) as id,
-                    at,
-                    title,
-                    markdown,
-                    published,
-                    image,
-                    visits,
-                    {}
-                FROM drafted
-                WHERE id = $draft_id;
+            SELECT
+                fn::string_id(id) as draft_id,
+                fn::string_id(in) as author,
+                fn::string_id(out) as id,
+                at,
+                title,
+                markdown,
+                published,
+                image,
+                visits,
+                {}
+            FROM ONLY drafted
+            WHERE id = $draft_id
+            LIMIT 1;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let query = tran_conn.query_single_with_args_specify_result(
-            &drafted_query,
-            ("draft_id", thing_from_string(&draft_id)),
-            1,
-        );
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                tran_conn.cancel_tran().await;
-                error!("Error publishing draft, cancelling transaction {:#?}", e);
-                panic!();
-            }
-        };
-
-        match response {
-            Some(p) => p,
-            None => {
-                tran_conn.cancel_tran().await;
-                error!("Error publishing {}, cancelling transaction", draft_id);
-                panic!();
-            }
-        }
+        DbProgram::new()
+            .op(DbOp::new("draft.unpublish", q))
+            .bind_thing("draft_id", thing_from_string(draft_id))
     }
 
-    #[instrument(skip(self))]
-    pub async fn unpublish_draft(&self, draft_id: String) -> PostVersion {
-        info!("r: unpublish draft");
-
-        let drafted_query = format!(
+    /// Program: select drafted posts (published=false) returns Vec<PostVersion>.
+    pub fn program_select_drafted_posts(&self) -> DbProgram {
+        let q = format!(
             r#"
-                UPDATE $draft_id SET published = false;
-
-                SELECT
-                    fn::string_id(id) as draft_id,
-                    fn::string_id(in) as author,
-                    fn::string_id(out) as id,
-                    at,
-                    title,
-                    markdown,
-                    published,
-                    image,
-                    visits,
-                    {}
-                FROM drafted
-                WHERE id = $draft_id;
+            SELECT
+                fn::string_id(out) as id,
+                fn::string_id(id) as draft_id,
+                title,
+                markdown,
+                at,
+                fn::string_id(in) as author,
+                published,
+                image,
+                visits,
+                {}
+            FROM drafted
+            WHERE published = false
+            ORDER BY at DESC;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
-
-        let query = self.reader.query_single_with_args_specify_result(
-            &drafted_query,
-            ("draft_id", thing_from_string(&draft_id)),
-            1,
-        );
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Error unpublishing draft {:#?}", e);
-                panic!();
-            }
-        };
-
-        match response {
-            Some(p) => p,
-            None => {
-                error!("Nothing returned when unpublishing draft");
-                panic!()
-            }
-        }
+        DbProgram::new().op(DbOp::new("draft.select_unpublished", q))
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_published_posts(&self) -> Vec<PostVersion> {
-        info!("r: select published posts");
-
-        let select_published = format!(
+    /// Program: select current draft (published=false) for post returns PostVersion.
+    pub fn program_select_current_draft(&self, post_id: &String) -> DbProgram {
+        let q = format!(
             r#"
-                SELECT
-                    fn::string_id(out) as id,
-                    fn::string_id(id) as draft_id,
-                    title,
-                    markdown,
-                    at,
-                    fn::string_id(in) as author,
-                    published,
-                    image,
-                    visits,
-                    {}
-                FROM drafted
-                WHERE published = true
-                ORDER BY at DESC;
+            SELECT
+                fn::string_id(out) as id,
+                fn::string_id(id) as draft_id,
+                title,
+                markdown,
+                at,
+                fn::string_id(in) as author,
+                published,
+                image,
+                visits,
+                {}
+            FROM drafted
+            WHERE out = $post_id
+                AND published = false
+            ORDER BY at DESC
+            LIMIT 1;
             "#,
-            &self.meta.select_meta_string
+            self.meta.select_meta_string
         );
 
-        let query = self.reader.query_many(&select_published);
-
-        match query.await {
-            Ok(p) => p,
-            Err(e) => panic!("error selecting published posts: {:#?}", e),
-        }
+        DbProgram::new()
+            .op(DbOp::new("draft.select_current", q))
+            .bind_thing("post_id", thing_from_string(post_id))
     }
 
-    #[instrument(skip(self, tran_conn))]
-    pub async fn unpublish_drafts_for_post_id(&self, post_id: String, tran_conn: &NovaDB) -> bool {
-        info!("r: unpublish_drafts_for_posT_id");
-        let query = tran_conn.query_none_with_args(
+    /// Program: select published posts returns Vec<PostVersion>.
+    pub fn program_select_published_posts(&self) -> DbProgram {
+        let q = format!(
             r#"
-                UPDATE drafted
-                    SET published = false
-                WHERE out = $post_id;
+            SELECT
+                fn::string_id(out) as id,
+                fn::string_id(id) as draft_id,
+                title,
+                markdown,
+                at,
+                fn::string_id(in) as author,
+                published,
+                image,
+                visits,
+                {}
+            FROM drafted
+            WHERE published = true
+            ORDER BY at DESC;
             "#,
-            ("post_id", thing_from_string(&post_id)),
+            self.meta.select_meta_string
         );
-
-        match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                tran_conn.cancel_tran().await;
-                error!("Error unpublishing drafts for post: {:#?}", e);
-                panic!()
-            }
-        }
+        DbProgram::new().op(DbOp::new("draft.select_published", q))
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_post_id_for_draft_id(&self, draft_id: &String) -> String {
-        info!("r: select_post_id_for_draft_id");
-        let query = self.reader.query_single_with_args(
-            "(SELECT fn::string_id(out) as id FROM ONLY drafted WHERE id = $draft_id LIMIT 1).id",
-            ("draft_id", thing_from_string(draft_id)),
-        );
-
-        let response = match query.await {
-            Ok(r) => r,
-            Err(e) => {
-                error!(
-                    "Error selecting post_id from draft_id {}: {:#?}",
-                    draft_id, e
-                );
-                panic!();
-            }
-        };
-
-        match response {
-            Some(id) => id,
-            None => {
-                error!("No post_id found for draft: {:#?}", draft_id);
-                panic!()
-            }
-        }
+    /// Program: unpublish all drafts for post returns true.
+    pub fn program_unpublish_drafts_for_post_id(&self, post_id: String) -> DbProgram {
+        DbProgram::new()
+            .op(DbOp::new(
+                "draft.unpublish_all_for_post",
+                r#"
+                UPDATE drafted SET published = false WHERE out = $post_id
+                RETURN true;
+                "#,
+            ))
+            .bind_thing("post_id", thing_from_string(&post_id))
     }
 
-    #[instrument(skip(self))]
-    pub async fn select_unpublished_post_ids(&self) -> Vec<String> {
-        let query = self.reader.query_many_specify_result(
+    /// Program: select post id for draft id returns String id.
+    pub fn program_select_post_id_for_draft_id(&self, draft_id: String) -> DbProgram {
+        DbProgram::new()
+            .op(DbOp::new(
+                "draft.select_post_id",
+                r#"
+                SELECT fn::string_id(out) as id FROM ONLY drafted WHERE id = $draft_id LIMIT 1;
+                "#,
+            ))
+            .bind_thing("draft_id", thing_from_string(&draft_id))
+    }
+
+    /// Program: select unpublished post ids returns Vec<IdContainer> (service can map to Vec<String>).
+    pub fn program_select_unpublished_post_ids(&self) -> DbProgram {
+        DbProgram::new().op(DbOp::new(
+            "post.select_unpublished_ids",
             r#"
             LET $published = SELECT out FROM drafted WHERE published = true;
-            
+
             LET $unpublished = SELECT fn::string_id(out) as id FROM drafted WHERE out NOT IN $published.out;
-            
+
             RETURN array::distinct($unpublished);
-        "#,
-            2,
-        );
-
-        let result: Vec<IdContainer> = match query.await {
-            Ok(ids) => ids,
-            Err(e) => panic!("Error selecting unpublished post ids: {:#?}", e),
-        };
-
-        result.into_iter().map(|c| c.id).collect()
+            "#,
+        ))
     }
 }

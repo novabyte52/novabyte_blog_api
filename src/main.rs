@@ -21,7 +21,7 @@ use nb_lib::{
     services::{s_persons::PersonsService, s_posts::PostsService},
 };
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
-use surrealdb::{engine::any::connect, opt::auth::Root};
+use surrealdb::{engine::any::connect, opt::auth::Database};
 use surrealdb_migrations::MigrationRunner;
 use tokio::net::TcpListener;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -50,7 +50,7 @@ use utils::get_env;
 #[instrument]
 #[tokio::main]
 async fn main() {
-    if !dotenv::dotenv().is_ok() {
+    if !dotenvy::dotenv().is_ok() {
         error!("unable to load .env");
     }
 
@@ -87,25 +87,21 @@ async fn connect_to_db() {
     // Signin as a namespace, database, or root user
     let user: String = get_env(NB_DB_USER);
     let pswd: String = get_env(NB_DB_PSWD);
-
     debug!("signing in as: {:#?} with password: {:#?}", &user, &pswd);
-
-    db.signin(Root {
-        username: user.as_str(),
-        password: pswd.as_str(),
-    })
-    .await
-    .expect("Unable to login to database. Review credentials.");
 
     // Select a specific namespace / database
     let ns: String = get_env(NB_DB_NAMESPACE);
     let db_name: String = get_env(NB_DB_NAME);
     debug!("ns: {:#?} | db: {:#?}", &ns, &db_name);
 
-    db.use_ns(ns)
-        .use_db(db_name)
-        .await
-        .expect("Unable to access specified namespace or database.");
+    db.signin(Database {
+        username: user.as_str(),
+        password: pswd.as_str(),
+        namespace: ns.as_str(),
+        database: db_name.as_str(),
+    })
+    .await
+    .expect("Unable to login to database. Review credentials.");
 
     // Apply all migrations
     info!("applying migrations");

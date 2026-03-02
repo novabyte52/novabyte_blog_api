@@ -174,6 +174,7 @@ pub async fn refresh_token(
         if let Some(person) = services.persons.get_person(token.person.clone()).await {
             person
         } else {
+            error!("could not find person from refresh endpoint");
             // DEBT: its hard to imagine a scenario where the id of the person in the token
             // is missing or incorrect, but there could be some better error handling here.
             return Err((
@@ -218,6 +219,8 @@ pub async fn handle_get_person(
     if let Some(person) = services.persons.get_person(person_id.clone()).await {
         return Ok(Json(person));
     };
+
+    error!("could not find person from handle_get_endpoint endpoint");
 
     Err((
         StatusCode::NOT_FOUND,
