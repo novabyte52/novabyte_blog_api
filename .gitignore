@@ -1,5 +1,9 @@
 /target
 /cert
+
 *.env
+.env
+.env.*
+!.env.sample
 
 *.tar*
