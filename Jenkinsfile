@@ -23,7 +23,7 @@ pipeline {
             steps {
                 sh 'docker build -t novabyte-api:latest .'
                 sh 'docker save -o nb-api_docker-image.tar novabyte-api:latest'
-                sh 'rm nb-api_docker-image.tar.xz'
+                sh 'rm -f nb-api_docker-image.tar.xz'
                 sh 'xz -T0 -9 nb-api_docker-image.tar'
             }
         }
@@ -36,6 +36,7 @@ pipeline {
                 )]) {
                     sh '''
                         ssh-keyscan -H ${DROPLET_HOST} >> ~/.ssh/known_hosts
+                        ssh -i "$PK" ${DROPLET_USER}@${DROPLET_HOST} "rm -f ${DEPLOY_PATH}/.env ${DEPLOY_PATH}/nb-api_docker-image.tar.xz ${DEPLOY_PATH}/nb-api_docker-image.tar"
                         scp -i "$PK" nb-api_docker-image.tar.xz ${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/
                         scp -i "$PK" .env ${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/
                         ssh -i "$PK" ${DROPLET_USER}@${DROPLET_HOST} "cd ${DEPLOY_PATH} && xz -d nb-api_docker-image.tar.xz && docker load -i nb-api_docker-image.tar"
