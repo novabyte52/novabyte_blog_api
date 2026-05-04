@@ -12,7 +12,7 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'nb-blog-env-file', variable: 'ENV_FILE')]) {
                     sh 'touch .env'
-                    sh 'cp $ENV_FILE .env'
+                    sh 'cat $ENV_FILE > .env'
                 }
             }
         }
