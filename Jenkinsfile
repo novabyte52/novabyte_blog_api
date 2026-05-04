@@ -11,7 +11,7 @@ pipeline {
         stage('Prepare') {
             steps {
                 sh 'echo "loading env file..."'
-                withCredentials([file(credentialsId: 'nb-blog-env-file', variable: 'ENV_FILE')])
+                withCredentials([file(credentialsId: 'nb-blog-env-file', variable: 'ENV_FILE')]) { }
                 sh 'echo "loaded env file...."'
             }
         }
