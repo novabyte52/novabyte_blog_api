@@ -10,18 +10,20 @@ pipeline {
     stages {
         stage('Prepare') {
             steps {
-                sh 'echo "loading env file..."'
-                withCredentials([file(credentialsId: 'nb-blog-env-file', variable: 'ENV_FILE')]) { }
-                sh 'echo "loaded env file...."'
+                echo 'loading env file...'
+                withCredentials([file(credentialsId: 'nb-blog-env-file', variable: 'ENV_FILE')]) {
+                    sh 'cp -- "$ENV_FILE" .env'
+                    sh 'ls -la .env'
+                }
+                echo 'loaded env file....'
             }
         }
 
         stage('Build') {
             steps {
-                echo 'Building...'
                 sh 'docker build -t novabyte-api:latest .'
                 sh 'docker save -o nb-api_docker-image.tar novabyte-api:latest'
-                sh 'xz -T0 -9 nb-api_docker-image.tar > nb-blog_api'
+                sh 'xz -T0 -9 nb-api_docker-image.tar'
             }
         }
 
@@ -33,8 +35,9 @@ pipeline {
                 )]) {
                     sh '''
                         ssh-keyscan -H ${DROPLET_HOST} >> ~/.ssh/known_hosts
-                        scp -i $PK nb-blog_api ${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/
-                        ssh -i $PK ${DROPLET_USER}@${DROPLET_HOST} "cd ${DEPLOY_PATH} && xz -d nb-blog_api && docker load -i nb-api_docker-image.tar"
+                        scp -i $PK nb-api_docker-image.tar.xz ${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/
+                        scp -i $PK .env ${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/
+                        ssh -i $PK ${DROPLET_USER}@${DROPLET_HOST} "cd ${DEPLOY_PATH} && xz -d nb-api_docker-image.tar.xz && docker load -i nb-api_docker-image.tar"
                     '''
                 }
             }
