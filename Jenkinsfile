@@ -23,6 +23,7 @@ pipeline {
             steps {
                 sh 'docker build -t novabyte-api:latest .'
                 sh 'docker save -o nb-api_docker-image.tar novabyte-api:latest'
+                sh 'rm nb-api_docker-image.tar.xz'
                 sh 'xz -T0 -9 nb-api_docker-image.tar'
             }
         }
