@@ -71,7 +71,7 @@ async fn main() {
         .parse()
         .expect("Unable to resolve server port!");
 
-    info!("hello world of CI/CD!");
+    info!("hello world of CI/CD! 02");
 
     // run our app
     serve(app, port).await;
