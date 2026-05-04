@@ -38,6 +38,7 @@ pipeline {
                         scp -i $PK nb-api_docker-image.tar.xz ${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/
                         scp -i $PK .env ${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/
                         ssh -i $PK ${DROPLET_USER}@${DROPLET_HOST} "cd ${DEPLOY_PATH} && xz -d nb-api_docker-image.tar.xz && docker load -i nb-api_docker-image.tar"
+                        ssh -i $PK ${DROPLET_USER}@${DROPLET_HOST} "cd /srv/www/deploy && docker compose restart api"
                     '''
                 }
             }
