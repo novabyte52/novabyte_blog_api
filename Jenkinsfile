@@ -12,7 +12,7 @@ pipeline {
             steps {
                 echo 'loading env file...'
                 withCredentials([file(credentialsId: 'nb-blog-env-file', variable: 'ENV_FILE')]) {
-                    sh 'cp -- "$ENV_FILE" .env'
+                    sh 'cp -f -- "$ENV_FILE" .env'
                     sh 'ls -la .env'
                 }
                 echo 'loaded env file....'
