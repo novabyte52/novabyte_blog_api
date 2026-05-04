@@ -8,6 +8,14 @@ pipeline {
     }
 
     stages {
+        stage('Prepare') {
+            steps {
+                withCredentials([file(credentialsId: 'nb-blog-env-file', variable: 'ENV_FILE')]) {
+                    sh 'cp $ENV_FILE .env'
+                }
+            }
+        }
+
         stage('Build') {
             steps {
                 echo 'Building...'
@@ -16,6 +24,7 @@ pipeline {
                 sh 'xz -T0 -9 nb-api_docker-image.tar > nb-blog_api'
             }
         }
+
         stage('Deploy') {
             steps {
                 withCredentials([sshUserPrivateKey(
