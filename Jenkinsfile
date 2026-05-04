@@ -11,8 +11,7 @@ pipeline {
         stage('Prepare') {
             steps {
                 withCredentials([file(credentialsId: 'nb-blog-env-file', variable: 'ENV_FILE')]) {
-                    sh 'touch .env'
-                    sh 'cat $ENV_FILE > .env'
+                    sh 'echo $ENV_FILE'
                 }
             }
         }
