@@ -1,246 +1,82 @@
+use std::collections::BTreeMap;
+
 use super::SurrealDBConnection;
 
-use serde::de::{DeserializeOwned, Error};
-use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json::Value as JsonValue;
-use std::collections::BTreeMap;
-use std::fmt;
 
 use surrealdb::engine::any::{connect, Any};
-use surrealdb::error::{Api, Db};
+use surrealdb::method::Transaction;
 use surrealdb::opt::auth::Database;
-use surrealdb::sql::{Array as SqlArray, Object as SqlObject, Strand, Thing, Value as SqlValue};
-use surrealdb::{Error as DbError, Surreal};
+use surrealdb::types::{SurrealValue, Value as SurrealVal};
+use surrealdb::{Error as DbError, IndexedResults, Surreal};
 
-use tracing::{instrument, trace};
+use tracing::instrument;
 
-/// A single statement plus optional "debug label" to help you reason about indices.
-#[derive(Debug, Clone)]
-pub struct DbOp {
-    pub label: &'static str,
-    pub sql: String,
-}
-
-impl DbOp {
-    pub fn new(label: &'static str, sql: impl Into<String>) -> Self {
-        Self {
-            label,
-            sql: sql.into(),
-        }
-    }
-}
-
-/// A composable query “program”:
-/// - a list of statements (ops)
-/// - a single binding map shared by the whole request
-#[derive(Debug, Clone, Default)]
-pub struct DbProgram {
-    ops: Vec<DbOp>,
-    binds: BTreeMap<String, SqlValue>,
-}
-
-impl DbProgram {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn op(mut self, op: DbOp) -> Self {
-        self.ops.push(op);
-        self
-    }
-
-    pub fn extend(mut self, other: DbProgram) -> Self {
-        self.ops.extend(other.ops);
-        for (k, v) in other.binds {
-            self.binds.insert(k, v);
-        }
-        self
-    }
-
-    pub fn bind_json(mut self, key: impl Into<String>, value: JsonValue) -> Self {
-        self.binds.insert(key.into(), json_to_sql_value(value));
-        self
-    }
-
-    pub fn bind_value(mut self, key: impl Into<String>, value: SqlValue) -> Self {
-        self.binds.insert(key.into(), value);
-        self
-    }
-
-    pub fn bind_thing(mut self, key: impl Into<String>, thing: Thing) -> Self {
-        self.binds.insert(key.into(), SqlValue::Thing(thing));
-        self
-    }
-
-    pub fn bind<V: Serialize>(mut self, key: impl Into<String>, value: V) -> Result<Self, DbError> {
-        let json = serde_json::to_value(value)
-            .map_err(|e| DbError::Db(Db::unreachable(format!("Invalid bindings: {e}"))))?;
-
-        self.binds.insert(key.into(), json_to_sql_value(json));
-        Ok(self)
-    }
-
-    pub fn bind_serde<A: Serialize>(mut self, args: A) -> Result<Self, DbError> {
-        let json = serde_json::to_value(args)
-            .map_err(|e| DbError::Db(Db::unreachable(format!("Invalid bindings: {e}"))))?;
-
-        let obj = json.as_object().ok_or_else(|| {
-            DbError::Db(Db::unreachable(
-                "bind_serde expects a serializable object/map",
-            ))
-        })?;
-
-        for (k, v) in obj {
-            self.binds.insert(k.clone(), json_to_sql_value(v.clone()));
-        }
-        Ok(self)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.ops.is_empty()
-    }
-
-    pub fn op_count(&self) -> usize {
-        self.ops.len()
-    }
-
-    pub fn labels(&self) -> impl Iterator<Item = &'static str> + '_ {
-        self.ops.iter().map(|o| o.label)
-    }
-}
-
-impl fmt::Display for DbProgram {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // 1) Bindings -> LET statements (stable order for diffing)
-        let mut keys: Vec<_> = self.binds.keys().collect();
-        keys.sort();
-
-        if !keys.is_empty() {
-            writeln!(f, "-- bindings")?;
-            for k in keys {
-                let v = self.binds.get(k).unwrap();
-                writeln!(f, "LET ${} = {};", k, sql_literal(v))?;
-            }
-            writeln!(f)?;
-        }
-
-        // 2) Ops -> labeled blocks
-        for (i, op) in self.ops.iter().enumerate() {
-            writeln!(f, "-- [{:02}] {}", i, op.label)?;
-            writeln!(f, "{}", ensure_trailing_semicolon(op.sql.trim()))?;
-            writeln!(f)?;
-        }
-
-        Ok(())
-    }
-}
-
-fn json_to_sql_value(v: JsonValue) -> SqlValue {
-    match v {
-        JsonValue::Null => SqlValue::None,
-        JsonValue::Bool(b) => SqlValue::Bool(b),
-        JsonValue::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                SqlValue::from(i)
-            } else if let Some(u) = n.as_u64() {
-                SqlValue::from(u)
-            } else if let Some(f) = n.as_f64() {
-                SqlValue::from(f)
-            } else {
-                SqlValue::None
-            }
-        }
-        JsonValue::String(s) => SqlValue::Strand(Strand::from(s)),
-        JsonValue::Array(arr) => {
-            let items = arr.into_iter().map(json_to_sql_value).collect::<Vec<_>>();
-            SqlValue::Array(SqlArray::from(items))
-        }
-        JsonValue::Object(map) => {
-            // ✅ IMPORTANT: detect Thing-like objects and convert to SqlValue::Thing
-            // Thing serializes like: {"tb":"person","id":{"String":"..."}}
-            let candidate = JsonValue::Object(map.clone());
-            if let Ok(thing) = serde_json::from_value::<Thing>(candidate) {
-                return SqlValue::Thing(thing);
-            }
-
-            // fallback: regular object
-            let mut obj = SqlObject::default();
-            for (k, v) in map {
-                obj.insert(k, json_to_sql_value(v));
-            }
-            SqlValue::Object(obj)
-        }
-    }
-}
-
-fn sql_literal(v: &SqlValue) -> String {
-    match v {
-        SqlValue::None => "NONE".to_string(),
-        SqlValue::Null => "NONE".to_string(), // keep Surrealist-friendly
-        SqlValue::Bool(b) => b.to_string(),
-        SqlValue::Number(n) => n.to_string(),
-        SqlValue::Strand(s) => format!("{:?}", s.as_str()),
-        SqlValue::Thing(t) => t.to_string(), // prints like person:01...
-        // For objects/arrays and anything else, fallback to Surreal's canonical string
-        other => other.to_string(),
-    }
-}
-
-/// Ensure the SQL ends with a trailing semicolon.
-/// If it already ends with ';' (after trimming), leave it alone.
-fn ensure_trailing_semicolon(sql: &str) -> String {
-    let s = sql.trim_end();
-    if s.is_empty() {
-        return ";".to_string();
-    }
-    if s.ends_with(';') {
-        s.to_string()
-    } else {
-        format!("{};", s)
-    }
-}
-
-/// Wraps a SurrealDB response and provides typed extraction.
+/// Wraps a SurrealDB [`IndexedResults`] response and provides typed extraction helpers.
 #[derive(Debug)]
 pub struct NovaResponse {
-    inner: surrealdb::Response,
+    inner: IndexedResults,
+}
+
+impl From<IndexedResults> for NovaResponse {
+    fn from(resp: IndexedResults) -> Self {
+        Self { inner: resp }
+    }
 }
 
 impl NovaResponse {
-    /// Take an Optional single result from statement `idx`.
-    /// Works with `usize` selector in SurrealDB 2.0.4.
+    /// Extract `Option<T>` from result at `idx`, converting through JSON for serde compatibility.
     pub fn take_opt<T: DeserializeOwned>(&mut self, idx: usize) -> Result<Option<T>, DbError> {
-        self.inner.take::<Option<T>>(idx)
-    }
-
-    /// Take a Vec result from statement `idx`.
-    /// Works with `usize` selector in SurrealDB 2.0.4.
-    pub fn take_vec<T: DeserializeOwned>(&mut self, idx: usize) -> Result<Vec<T>, DbError> {
-        self.inner.take::<Vec<T>>(idx)
-    }
-
-    /// Take a single result (expects exactly one), otherwise errors.
-    /// This is your ergonomic replacement for `take::<T>(idx)`.
-    pub fn take_one<T: DeserializeOwned>(&mut self, idx: usize) -> Result<T, DbError> {
-        match self.inner.take::<Option<T>>(idx)? {
-            Some(v) => Ok(v),
-            None => Err(DbError::Db(Db::unreachable(format!(
-                "Expected a result at index {idx}, got NONE"
-            )))),
+        match self.inner.take::<Option<SurrealVal>>(idx)? {
+            None => Ok(None),
+            Some(v @ (SurrealVal::None | SurrealVal::Null)) => {
+                let _ = v;
+                Ok(None)
+            }
+            Some(v) => serde_json::from_value::<T>(v.into_json_value())
+                .map(Some)
+                .map_err(|e| DbError::thrown(e.to_string())),
         }
     }
 
-    /// If you sometimes RETURN arrays and want the first item.
-    pub fn take_first<T: DeserializeOwned>(&mut self, idx: usize) -> Result<T, DbError> {
-        let v = self.inner.take::<Vec<T>>(idx)?;
-        v.into_iter().next().ok_or_else(|| {
-            DbError::Db(Db::unreachable(format!(
-                "Expected non-empty array at index {idx}, got empty"
-            )))
-        })
+    /// Extract `Vec<T>` from result at `idx`, converting through JSON for serde compatibility.
+    pub fn take_vec<T: DeserializeOwned>(&mut self, idx: usize) -> Result<Vec<T>, DbError> {
+        let vals = self.inner.take::<Vec<SurrealVal>>(idx)?;
+        vals.into_iter()
+            .map(|v| {
+                serde_json::from_value::<T>(v.into_json_value())
+                    .map_err(|e| DbError::thrown(e.to_string()))
+            })
+            .collect()
     }
 
-    pub fn into_inner(self) -> surrealdb::Response {
+    /// Extract exactly one `T` from result at `idx`, or error if absent.
+    pub fn take_one<T: DeserializeOwned>(&mut self, idx: usize) -> Result<T, DbError> {
+        match self.inner.take::<Option<SurrealVal>>(idx)? {
+            Some(v) if !matches!(v, SurrealVal::None | SurrealVal::Null) => {
+                serde_json::from_value::<T>(v.into_json_value())
+                    .map_err(|e| DbError::thrown(e.to_string()))
+            }
+            _ => Err(DbError::thrown(format!(
+                "Expected a result at index {idx}, got NONE"
+            ))),
+        }
+    }
+
+    /// Extract the first element of a `Vec<T>` from result at `idx`, or error if empty.
+    pub fn take_first<T: DeserializeOwned>(&mut self, idx: usize) -> Result<T, DbError> {
+        let vals = self.inner.take::<Vec<SurrealVal>>(idx)?;
+        match vals.into_iter().next() {
+            Some(v) => serde_json::from_value::<T>(v.into_json_value())
+                .map_err(|e| DbError::thrown(e.to_string())),
+            None => Err(DbError::thrown(format!(
+                "Expected non-empty array at index {idx}, got empty"
+            ))),
+        }
+    }
+
+    pub fn into_inner(self) -> IndexedResults {
         self.inner
     }
 }
@@ -263,103 +99,85 @@ impl NovaDB {
 
         let db = connect(address).await?;
         db.signin(Database {
-            username,
-            password,
-            namespace,
-            database,
+            username: username.to_owned(),
+            password: password.to_owned(),
+            namespace: namespace.to_owned(),
+            database: database.to_owned(),
         })
         .await?;
 
         Ok(Self { db })
     }
 
-    pub fn executor(&self) -> DbExecutor<'_> {
-        DbExecutor { db: self }
-    }
-}
-
-/// Executes DbPrograms as one Surreal request (optionally wrapped in a transaction).
-pub struct DbExecutor<'db> {
-    db: &'db NovaDB,
-}
-
-impl<'db> DbExecutor<'db> {
-    /// Execute as a plain batch (single request).
-    #[instrument(skip(self, program))]
-    pub async fn run(&self, program: DbProgram) -> Result<NovaResponse, DbError> {
-        self.run_inner(program, false).await
+    /// Execute a SQL query and return a typed response wrapper.
+    #[instrument(skip(self))]
+    pub async fn query(&self, sql: &str) -> Result<NovaResponse, DbError> {
+        Ok(self.db.query(sql).await?.into())
     }
 
-    /// Execute wrapped as:
-    /// BEGIN TRANSACTION;
-    ///   ...program ops...
-    /// COMMIT TRANSACTION;
+    /// Execute a SQL query with named variable bindings.
     ///
-    /// All in one request (the only supported manual transaction style).
-    #[instrument(skip(self, program))]
-    pub async fn run_tx(&self, program: DbProgram) -> Result<NovaResponse, DbError> {
-        self.run_inner(program, true).await
+    /// Pass a `serde_json::json!({ "var": value, ... })` object — each key maps to a
+    /// `$var` placeholder in the SQL.
+    ///
+    /// ```rust,ignore
+    /// db.query_with(
+    ///     "SELECT * FROM person WHERE id = $id",
+    ///     json!({ "id": person_id }),
+    /// ).await?;
+    /// ```
+    #[instrument(skip(self, args))]
+    pub async fn query_with(&self, sql: &str, args: JsonValue) -> Result<NovaResponse, DbError> {
+        Ok(self.db.query(sql).bind(args).await?.into())
     }
 
-    async fn run_inner(
-        &self,
-        program: DbProgram,
-        transactional: bool,
-    ) -> Result<NovaResponse, DbError> {
-        if program.is_empty() {
-            return Err(DbError::Api(Api::missing_field("DbProgram has 0 ops")));
+    /// Begin a transaction. Use the returned [`Transaction`] to execute statements,
+    /// then call `.commit()` or `.cancel()` to close it.
+    ///
+    /// `Transaction` derefs to `Surreal<Any>`, so `.query()` and all the usual typed
+    /// methods work on it. Wrap responses in [`NovaResponse`] for the typed extraction helpers:
+    ///
+    /// ```rust,ignore
+    /// let tx = db.begin().await?;
+    /// let mut resp: NovaResponse = tx.query(sql).await?.into();
+    /// let result = resp.take_one::<MyType>(0)?;
+    /// tx.commit().await?;
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn begin(&self) -> Result<Transaction<Any>, DbError> {
+        self.db.clone().begin().await
+    }
+
+    /// Execute a [`NovaQuery`] with typed variable bindings.
+    #[instrument(skip(self, q))]
+    pub async fn exec(&self, q: NovaQuery) -> Result<NovaResponse, DbError> {
+        Ok(self.db.query(&q.sql).bind(q.args).await?.into())
+    }
+}
+
+/// A SQL query with typed variable bindings ready for execution via [`NovaDB::exec`].
+///
+/// Build one with `NovaQuery::new(sql)` then chain `.bind(key, val)` calls.
+/// Any type implementing [`SurrealValue`] can be bound — including [`RecordId`],
+/// `String`, `&str`, `bool`, numeric types, etc.
+///
+/// [`RecordId`]: surrealdb::types::RecordId
+#[derive(Debug)]
+pub struct NovaQuery {
+    pub sql: String,
+    pub args: BTreeMap<String, SurrealVal>,
+}
+
+impl NovaQuery {
+    pub fn new(sql: impl Into<String>) -> Self {
+        Self {
+            sql: sql.into(),
+            args: BTreeMap::new(),
         }
+    }
 
-        trace!("running program => {}", &program);
-
-        let mut q = if transactional {
-            self.db.db.query("BEGIN TRANSACTION;")
-        } else {
-            let first = &program.ops[0].sql;
-            self.db.db.query(first)
-        };
-
-        let start_idx = if transactional { 0 } else { 1 };
-
-        // When transactional, we add ops after BEGIN.
-        // When non-transactional, the first op is already set as the base query.
-        for (i, op) in program.ops.iter().enumerate() {
-            if !transactional && i == 0 {
-                continue;
-            }
-            q = q.query(op.sql.clone());
-        }
-
-        if transactional {
-            q = q.query("COMMIT TRANSACTION;");
-        }
-
-        if !program.binds.is_empty() {
-            let binds = program.binds.clone();
-            q = q.bind(binds);
-        }
-
-        trace!(
-            "Executing DbProgram: transactional={}, ops={}, labels={:?}",
-            transactional,
-            program.op_count(),
-            program.labels().collect::<Vec<_>>()
-        );
-
-        let resp = q.await?;
-
-        // NOTE:
-        // Surreal can return Ok(Response) even when internal statements errored,
-        // and those errors surface on `take(idx)`.
-        //
-        // Indices:
-        // - if transactional: idx 0 = BEGIN, then ops map to idx 1..=N, idx N+1 = COMMIT
-        // - if not transactional: ops map to idx 0..=N-1
-        //
-        // We don’t auto-check here because sometimes you WANT partial inspection.
-        // Your services can enforce with `take()` calls (fail fast).
-        let _ = start_idx;
-
-        Ok(NovaResponse { inner: resp })
+    pub fn bind(mut self, key: &str, val: impl SurrealValue) -> Self {
+        self.args.insert(key.to_string(), val.into_value());
+        self
     }
 }

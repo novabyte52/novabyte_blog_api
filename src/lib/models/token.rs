@@ -1,6 +1,6 @@
 // use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 use time::OffsetDateTime;
 
 use super::meta::Meta;
@@ -15,7 +15,7 @@ pub struct Token {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenRecord {
-    pub created_by: Thing,
+    pub created_by: RecordId,
 
     #[serde(with = "time::serde::iso8601")]
     pub created_on: OffsetDateTime, // DateTime<Utc>,
@@ -25,26 +25,26 @@ pub struct TokenRecord {
 
     pub id: String,
     pub person: String,
-    pub meta: Thing,
+    pub meta: RecordId,
 }
 
 #[derive(Debug, Serialize)]
 pub struct SetSignedTokenArgs {
-    pub token_id: Thing,
+    pub token_id: RecordId,
     pub signed_token: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct InsertTokenArgs {
-    pub person: Thing,
-    pub meta: Thing,
+    pub person: RecordId,
+    pub meta: RecordId,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BareToken {
-    pub id: Thing,
-    pub person: Thing,
-    pub meta: Thing,
+    pub id: RecordId,
+    pub person: RecordId,
+    pub meta: RecordId,
 }
 
 #[derive(Debug, Serialize)]

@@ -7,7 +7,7 @@ use tracing::{info, instrument};
 use crate::{
     constants::SYSTEM_ID,
     db::{
-        nova_db::{DbProgram, NovaDB},
+        nova_db::{NovaDB, NovaResponse},
         SurrealDBConnection,
     },
     models::{
@@ -35,54 +35,59 @@ impl PersonsService {
     #[instrument(skip(self))]
     pub async fn check_person_validity(&self, check: PersonCheck) -> PersonCheckResponse {
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
 
-        // This was previously a repo method doing multiple awaits.
-        // Under Pattern A: execute the programs you need.
-        let mut resp_email = if let Some(email) = check.email.as_deref() {
-            let program = self.repo.program_is_unique_email(email);
-            let mut r = exec.run(program).await.expect("db query failed");
+        let resp_email = if let Some(email) = check.email.as_deref() {
+            let mut r = db
+                .exec(self.repo.query_is_unique_email(email))
+                .await
+                .expect("db query failed");
             Some(r.take_one::<bool>(0).unwrap_or(false))
         } else {
             None
         };
 
-        let mut resp_user = if let Some(username) = check.username.as_deref() {
-            let program = self.repo.program_is_unique_username(username);
-            let mut r = exec.run(program).await.expect("db query failed");
+        let resp_user = if let Some(username) = check.username.as_deref() {
+            let mut r = db
+                .exec(self.repo.query_is_unique_username(username))
+                .await
+                .expect("db query failed");
             Some(r.take_one::<bool>(0).unwrap_or(false))
         } else {
             None
         };
 
         PersonCheckResponse {
-            email: resp_email.take().unwrap_or(false),
-            username: resp_user.take().unwrap_or(false),
+            email: resp_email.unwrap_or(false),
+            username: resp_user.unwrap_or(false),
         }
     }
 
     #[instrument(skip(self))]
     pub async fn sign_up(&self, mut sign_up_state: SignUpState) -> Person {
         let argon2 = Argon2::default();
-
         let salt = SaltString::generate(&mut OsRng);
         let password_hash = argon2
             .hash_password(sign_up_state.password.as_bytes(), &salt)
             .unwrap()
             .to_string();
-
         sign_up_state.pass_hash = Some(password_hash);
 
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
+        let q = self.repo.query_insert_person(sign_up_state, SYSTEM_ID);
 
-        // Create person is a program that returns Person (recommended run_tx)
-        let program = self
-            .repo
-            .program_insert_person(sign_up_state, &String::from(SYSTEM_ID));
-        let mut resp = exec.run_tx(program).await.expect("tx failed");
+        let tx = db.begin().await.expect("tx start failed");
+        let mut resp: NovaResponse = tx
+            .query(&q.sql)
+            .bind(q.args)
+            .await
+            .expect("insert person failed")
+            .into();
+        tx.commit().await.expect("tx commit failed");
 
-        // tx indices: 0 BEGIN, 1 meta.create, 2 person.create(return), 3 COMMIT
+        // Statement indices (LET not counted, only CREATE/SELECT):
+        //   0: CREATE meta
+        //   1: CREATE person
+        //   2: SELECT person with meta join
         resp.take_one::<Person>(2).expect("insert person failed")
     }
 
@@ -91,11 +96,11 @@ impl PersonsService {
         info!("s: log in");
 
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
 
-        // 1) fetch pass hash
-        let program = self.repo.program_select_person_hash_by_email(&creds.email);
-        let mut resp = exec.run(program).await.expect("db query failed");
+        let mut resp = db
+            .exec(self.repo.query_select_person_hash_by_email(&creds.email))
+            .await
+            .expect("db query failed");
 
         let pass_hash_row = resp
             .take_opt::<std::collections::HashMap<String, String>>(0)
@@ -112,74 +117,65 @@ impl PersonsService {
             panic!("passwords don't match!");
         }
 
-        // 2) fetch person
-        let program = self.repo.program_select_person_by_email(&creds.email);
-        let mut resp = exec.run(program).await.expect("db query failed");
+        let mut resp2 = db
+            .exec(self.repo.query_select_person_by_email(&creds.email))
+            .await
+            .expect("db query failed");
 
-        resp.take_one::<Person>(0)
+        resp2
+            .take_one::<Person>(0)
             .expect("No person found for that email")
     }
 
     #[instrument(skip(self))]
     pub async fn create_refresh_token(&self, person_id: String) -> TokenRecord {
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
 
-        // Transaction:
-        // - invalidate all sessions for person
-        // - create meta + token and return token_id
-        // - (optional) return hydrated TokenRecord (we'll do this in Rust using additional selects)
-        //
-        // You *can* do full hydration in one query too, but keeping it simple/semantic here.
+        let tx = db.begin().await.expect("tx start failed");
 
-        let program = DbProgram::new()
-            .extend(self.repo.program_delete_all_sessions_for_person(&person_id))
-            .extend(self.repo.program_insert_token_record(&person_id));
+        // Delete all existing sessions for this person
+        let q_del = self.repo.query_delete_all_sessions_for_person(&person_id);
+        let _ = tx
+            .query(&q_del.sql)
+            .bind(q_del.args)
+            .await
+            .expect("delete sessions failed");
 
-        let mut resp = exec.run_tx(program).await.expect("tx failed");
+        // Create new meta + token record, return the token RecordId
+        let q_ins = self.repo.query_insert_token_record(&person_id);
+        let mut resp_ins: NovaResponse = tx
+            .query(&q_ins.sql)
+            .bind(q_ins.args)
+            .await
+            .expect("insert token failed")
+            .into();
 
-        info!("refresh token response: {:#?}", &resp);
+        tx.commit().await.expect("tx commit failed");
 
-        // Need the token_id Thing returned by program_insert_token_record.
-        // Indices depend on composition; easiest rule:
-        // - tx adds BEGIN at 0
-        // - first program ops occupy 1..k
-        // - second program's RETURN is after that
-        //
-        // We’ll just compute it: delete_all_sessions has 1 op, insert_token_record has 2 ops (meta.create + RETURN token_id)
-        // In tx: BEGIN(0), delete_all(1), meta.create(2), token.create/return(3), COMMIT(4)
-        let token_thing: surrealdb::sql::Thing = resp.take_one(0).expect("token id not returned");
+        // Statement indices in query_insert_token_record:
+        //   0: CREATE meta
+        //   1: CREATE token
+        //   2: RETURN fn::string_id($token_id) → String
+        let token_id_str = resp_ins
+            .take_one::<String>(2)
+            .expect("token id not returned");
 
-        // Now select token record (read) and build TokenRecord (with meta lookup).
-        // You can also move this into a single program later if you want.
-
-        let mut resp_token = exec
-            .run(
-                self.repo
-                    .program_select_token_record(&token_thing.to_string()),
-            )
+        // Select the token record with meta join
+        let mut resp_token = db
+            .exec(self.repo.query_select_token_record(&token_id_str))
             .await
             .expect("select token failed");
 
         let token: Token = resp_token.take_one(0).expect("token not found");
 
-        // If you still want Meta<> hydration like before, do it with MetaRepo program,
-        // or simplify TokenRecord to not require meta read. Here we keep your old behavior:
-        let meta_repo = crate::repos::r_meta::MetaRepo::new();
-        let mut resp_meta = exec
-            .run(meta_repo.program_select_meta(&token.meta.id))
-            .await
-            .expect("select meta failed");
-
-        let meta: crate::models::meta::Meta<()> = resp_meta.take_one(0).expect("meta not found");
-
+        // token.meta is already fully joined via select_meta_string in query_select_token_record
         TokenRecord {
-            id: token.id.to_string(),
-            person: token.person.to_string(),
-            created_by: thing_from_string(&meta.created_by),
-            created_on: meta.created_on,
-            deleted_on: meta.deleted_on,
-            meta: thing_from_string(&meta.id),
+            id: token.id,
+            person: token.person,
+            created_by: thing_from_string(&token.meta.created_by),
+            created_on: token.meta.created_on,
+            deleted_on: token.meta.deleted_on,
+            meta: thing_from_string(&token.meta.id),
         }
     }
 
@@ -191,22 +187,23 @@ impl PersonsService {
     #[instrument(skip(self))]
     pub async fn logout_by_id(&self, person_id: String) {
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
 
-        let program = self.repo.program_delete_all_sessions_for_person(&person_id);
-        let mut resp = exec.run(program).await.expect("db query failed");
+        let mut resp = db
+            .exec(self.repo.query_delete_all_sessions_for_person(&person_id))
+            .await
+            .expect("db query failed");
 
-        // program returns true
         let _ = resp.take_one::<bool>(0).unwrap_or(true);
     }
 
     #[instrument(skip(self))]
     pub async fn get_token_record(&self, token_id: String) -> Token {
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
 
-        let program = self.repo.program_select_token_record(&token_id);
-        let mut resp = exec.run(program).await.expect("db query failed");
+        let mut resp = db
+            .exec(self.repo.query_select_token_record(&token_id))
+            .await
+            .expect("db query failed");
 
         resp.take_one::<Token>(0).expect("token not found")
     }
@@ -214,12 +211,13 @@ impl PersonsService {
     #[instrument(skip(self, signed_token))]
     pub async fn set_signed_token(&self, token_id: String, signed_token: String) -> bool {
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
 
-        let program = self.repo.program_set_signed_token(&token_id, &signed_token);
-        let mut resp = exec.run(program).await.expect("db query failed");
+        let mut resp = db
+            .exec(self.repo.query_set_signed_token(&token_id, &signed_token))
+            .await
+            .expect("db query failed");
 
-        // if it returns Token, we just confirm it exists
+        // Statement indices: 0=UPDATE token, 1=SELECT token
         resp.take_opt::<Token>(0)
             .map(|o| o.is_some())
             .unwrap_or(false)
@@ -228,12 +226,11 @@ impl PersonsService {
     #[instrument(skip(self))]
     pub async fn soft_delete_token_record(&self, token_id: String) {
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
 
-        let program = self.repo.program_soft_delete_token_record(&token_id);
-        let mut resp = exec.run(program).await.expect("db query failed");
-
-        let _ = resp.take_one::<bool>(0).unwrap_or(true);
+        let _ = db
+            .exec(self.repo.query_soft_delete_token_record(&token_id))
+            .await
+            .expect("db query failed");
     }
 
     #[instrument(skip(self))]
@@ -241,10 +238,11 @@ impl PersonsService {
         info!("s: get person");
 
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
 
-        let program = self.repo.program_select_person(&person_id);
-        let mut resp = exec.run(program).await.expect("db query failed");
+        let mut resp = db
+            .exec(self.repo.query_select_person(&person_id))
+            .await
+            .expect("db query failed");
 
         info!("get_person response: {:#?}", &resp);
 
@@ -256,10 +254,11 @@ impl PersonsService {
         info!("s: get persons");
 
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
 
-        let program = self.repo.program_select_persons();
-        let mut resp = exec.run(program).await.expect("db query failed");
+        let mut resp = db
+            .exec(self.repo.query_select_persons())
+            .await
+            .expect("db query failed");
 
         resp.take_vec::<Person>(0).unwrap_or_default()
     }
@@ -267,10 +266,11 @@ impl PersonsService {
     #[instrument(skip(self))]
     pub async fn invalidate_refresh(&self, person_id: String) -> bool {
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
-        let exec = db.executor();
 
-        let program = self.repo.program_delete_all_sessions_for_person(&person_id);
-        let mut resp = exec.run(program).await.expect("db query failed");
+        let mut resp = db
+            .exec(self.repo.query_delete_all_sessions_for_person(&person_id))
+            .await
+            .expect("db query failed");
 
         resp.take_one::<bool>(0).unwrap_or(false)
     }
