@@ -48,8 +48,7 @@ impl PostsService {
             .await
             .expect("db query failed");
 
-        resp.take_vec::<PostHydrated>(0)
-            .expect("select posts failed")
+        resp.take_vec::<PostHydrated>(0).unwrap_or_default()
     }
 
     #[instrument(skip(self))]
@@ -106,11 +105,14 @@ impl PostsService {
 
             let mut resp = db.exec(q).await.expect("db query failed");
 
-            // Statement indices in query_create_draft (LET not counted):
-            //   0: RELATE (draft relation)
-            //   1: SELECT drafted with meta join
+            // Statement indices in query_create_draft (LET counted in SurrealDB v3):
+            //   0: LET $drafted_id
+            //   1: LET $meta_id
+            //   2: IF post-not-found check (NONE or throws)
+            //   3: RELATE (draft relation)
+            //   4: SELECT drafted with meta join
             return resp
-                .take_one::<PostVersion>(1)
+                .take_one::<PostVersion>(4)
                 .expect("draft create failed");
         }
 
@@ -170,12 +172,15 @@ impl PostsService {
             .into();
         tx.commit().await.expect("tx commit failed");
 
-        // Statement indices (LET not counted):
-        //   0: CREATE meta
-        //   1: CREATE post
-        //   2: RELATE (draft relation)
-        //   3: SELECT drafted with meta join
-        resp.take_one::<PostVersion>(3)
+        // Statement indices (LET counted in SurrealDB v3):
+        //   0: LET $meta_id
+        //   1: CREATE meta
+        //   2: LET $post_id
+        //   3: CREATE post
+        //   4: LET $drafted_id
+        //   5: RELATE (draft relation)
+        //   6: SELECT drafted with meta join
+        resp.take_one::<PostVersion>(6)
             .expect("draft create failed")
     }
 
@@ -189,12 +194,11 @@ impl PostsService {
             .await
             .expect("db query failed");
 
-        // RETURN array::distinct(...) is the last statement.
-        // In SurrealDB 3.x, LET statements with subqueries may or may not appear
-        // in IndexedResults. Index 0 assumes they don't; use 2 if they do.
-        let ids: Vec<IdContainer> = resp
-            .take_vec(0)
-            .unwrap_or_else(|_| resp.take_vec(2).unwrap_or_default());
+        // Statement indices (LET counted in SurrealDB v3):
+        //   0: LET $published
+        //   1: LET $unpublished
+        //   2: RETURN array::distinct($unpublished)
+        let ids: Vec<IdContainer> = resp.take_vec(2).unwrap_or_default();
 
         let unpublished_post_ids: Vec<String> = ids.into_iter().map(|c| c.id).collect();
 
@@ -248,11 +252,12 @@ impl PostsService {
             .into();
         tx.commit().await.expect("tx commit failed");
 
-        // Statement indices (LET not counted):
-        //   0: UPDATE drafted (unpublish all)
-        //   1: UPDATE $draft_id (publish)
-        //   2: RETURN true
-        resp.take_one::<bool>(2).unwrap_or(false)
+        // Statement indices (LET counted in SurrealDB v3):
+        //   0: LET $post_id
+        //   1: UPDATE drafted (unpublish all)
+        //   2: UPDATE $draft_id (publish)
+        //   3: RETURN true
+        resp.take_one::<bool>(3).unwrap_or(false)
     }
 
     /// Gets all published post versions.
@@ -265,8 +270,7 @@ impl PostsService {
             .await
             .expect("db query failed");
 
-        resp.take_vec::<PostVersion>(0)
-            .expect("select published failed")
+        resp.take_vec::<PostVersion>(0).unwrap_or_default()
     }
 
     /// Unpublish the draft with the given draft id.

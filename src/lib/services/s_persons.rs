@@ -51,7 +51,7 @@ impl PersonsService {
                 .exec(self.repo.query_is_unique_username(username))
                 .await
                 .expect("db query failed");
-            Some(r.take_one::<bool>(0).unwrap_or(false))
+            Some(r.take_one::<bool>(1).unwrap_or(false))
         } else {
             None
         };
@@ -84,11 +84,13 @@ impl PersonsService {
             .into();
         tx.commit().await.expect("tx commit failed");
 
-        // Statement indices (LET not counted, only CREATE/SELECT):
-        //   0: CREATE meta
-        //   1: CREATE person
-        //   2: SELECT person with meta join
-        resp.take_one::<Person>(2).expect("insert person failed")
+        // Statement indices (LET counted in SurrealDB v3):
+        //   0: LET $meta_id
+        //   1: CREATE meta
+        //   2: LET $person_id
+        //   3: CREATE person
+        //   4: SELECT person with meta join
+        resp.take_one::<Person>(4).expect("insert person failed")
     }
 
     #[instrument(skip(self))]
@@ -152,12 +154,14 @@ impl PersonsService {
 
         tx.commit().await.expect("tx commit failed");
 
-        // Statement indices in query_insert_token_record:
-        //   0: CREATE meta
-        //   1: CREATE token
-        //   2: RETURN fn::string_id($token_id) → String
+        // Statement indices in query_insert_token_record (LET counted in SurrealDB v3):
+        //   0: LET $meta_id
+        //   1: CREATE meta
+        //   2: LET $token_id
+        //   3: CREATE token
+        //   4: RETURN fn::string_id($token_id) → String
         let token_id_str = resp_ins
-            .take_one::<String>(2)
+            .take_one::<String>(4)
             .expect("token id not returned");
 
         // Select the token record with meta join

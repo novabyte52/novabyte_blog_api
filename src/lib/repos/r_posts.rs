@@ -140,6 +140,7 @@ impl PostsRepo {
             r#"
             LET $drafted_id = drafted:ulid();
             LET $meta_id = (SELECT meta FROM ONLY post WHERE id = $post_id LIMIT 1).meta;
+            IF $meta_id IS NONE {{ THROW "Post not found: " + fn::string_id($post_id) }};
 
             RELATE $person_id->drafted->$post_id
                 SET

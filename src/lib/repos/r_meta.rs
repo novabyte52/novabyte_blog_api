@@ -15,9 +15,9 @@ pub fn select_meta_string() -> String {
                 fn::string_id(id) as id,
                 fn::string_id(created_by) as created_by,
                 modified_on,
-                (IF !type::is::none(modified_by) THEN fn::string_id(modified_by) END) as modified_by,
+                (IF !type::is_none(modified_by) THEN fn::string_id(modified_by) END) as modified_by,
                 deleted_on,
-                (IF !type::is::none(deleted_by) THEN fn::string_id(deleted_by) END) as deleted_by,
+                (IF !type::is_none(deleted_by) THEN fn::string_id(deleted_by) END) as deleted_by,
                 *
             FROM ONLY meta
             WHERE id = $parent.meta
