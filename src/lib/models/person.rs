@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::Thing;
+use surrealdb::types::RecordId;
 
 use super::meta::Meta;
 
@@ -57,12 +57,12 @@ pub struct InsertPersonArgs {
     pub username: String,
     pub email: String,
     pub pass_hash: String,
-    pub meta: Thing,
+    pub meta: RecordId,
 }
 
 #[derive(Debug, Serialize)]
 pub struct SelectPersonArgs {
-    pub id: Thing,
+    pub id: RecordId,
 }
 
 #[derive(Debug, Serialize)]

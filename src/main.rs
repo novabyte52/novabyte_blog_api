@@ -15,14 +15,12 @@ use constants::{
     NB_ALLOWED_ORIGIN, NB_DB_ADDRESS, NB_DB_NAME, NB_DB_NAMESPACE, NB_DB_PSWD, NB_DB_USER,
     NB_SERVER_ADDRESS, NB_TLS_CERT, NB_TLS_KEY,
 };
-use include_dir::include_dir;
 use nb_lib::{
     db::SurrealDBConnection,
     services::{s_persons::PersonsService, s_posts::PostsService},
 };
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
 use surrealdb::{engine::any::connect, opt::auth::Database};
-use surrealdb_migrations::MigrationRunner;
 use tokio::net::TcpListener;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::{debug, error, info, info_span, instrument, trace};
@@ -95,30 +93,15 @@ async fn connect_to_db() {
     debug!("ns: {:#?} | db: {:#?}", &ns, &db_name);
 
     db.signin(Database {
-        username: user.as_str(),
-        password: pswd.as_str(),
-        namespace: ns.as_str(),
-        database: db_name.as_str(),
+        username: user,
+        password: pswd,
+        namespace: ns,
+        database: db_name,
     })
     .await
     .expect("Unable to login to database. Review credentials.");
 
-    // Apply all migrations
-    info!("applying migrations");
-
-    let mig_dir = include_dir!("$CARGO_MANIFEST_DIR/src/lib/db");
-    MigrationRunner::new(&db)
-        .load_files(&mig_dir)
-        .up()
-        .await
-        .expect("Failed to apply migrations");
-
-    let migrations_applied = MigrationRunner::new(&db)
-        .list()
-        .await
-        .expect("no applied migrations");
-
-    debug!("applied migrations: {:#?}", migrations_applied);
+    // TODO: re-add migration runner once surrealdb_migrations supports surrealdb 3.x
 }
 
 // #[instrument]
@@ -147,16 +130,16 @@ async fn init_api() -> Router {
         .route("/posts", get(get_posts))
         .route("/posts/drafts", get(get_drafted_posts))
         .route("/posts/drafts", post(handle_create_draft)) // ?publish=bool
-        .route("/posts/drafts/:draft_id/publish", post(publish_draft))
-        .route("/posts/drafts/:draft_id/publish", delete(unpublish_post))
-        .route("/posts/:post_id/drafts", get(get_post_drafts))
+        .route("/posts/drafts/{draft_id}/publish", post(publish_draft))
+        .route("/posts/drafts/{draft_id}/publish", delete(unpublish_post))
+        .route("/posts/{post_id}/drafts", get(get_post_drafts))
         //
         .layer(from_fn(is_admin))
         // ^^ admin layer ^^
         //
-        .route("/persons/:person_id/logout", delete(logout_person))
+        .route("/persons/{person_id}/logout", delete(logout_person))
         // eventual endpoints for profiles, comments, etc. will go in between the authorization check and the admin check
-        .route("/persons/:person_id", get(handle_get_person))
+        .route("/persons/{person_id}", get(handle_get_person))
         //
         .layer(from_fn_with_state(state.clone(), require_authentication))
         // ^^ authentication layer ^^
@@ -169,7 +152,7 @@ async fn init_api() -> Router {
         .route("/persons/valid", get(handle_check_person_validity))
         //
         // anonymous public posts routes
-        .route("/posts/drafts/:draft_id", get(get_draft))
+        .route("/posts/drafts/{draft_id}", get(get_draft))
         .route("/posts/random", get(handle_get_random_post))
         .route("/posts/published", get(get_published_posts))
         .layer(
