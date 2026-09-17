@@ -2934,6 +2934,7 @@ dependencies = [
  "itertools 0.13.0",
  "jwt-simple",
  "rand 0.8.5",
+ "rust_decimal",
  "rustls 0.23.42",
  "serde",
  "serde_json",

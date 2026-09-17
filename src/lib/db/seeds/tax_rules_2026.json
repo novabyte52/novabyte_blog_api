@@ -1,0 +1,179 @@
+{
+  "_comment": "Default 2026 rates. VERIFY against IRS Rev. Proc. 2025-32, the Ohio Department of Taxation, and your municipality before relying on the output for an actual payment. Unknown keys are ignored on load, so this note is safe to keep. Ohio's business income deduction is 250000 for most filers but 125000 for married-filing-separately - adjust if that is your status.",
+  "year": 2026,
+  "federal": {
+    "brackets": {
+      "single": [
+        {
+          "upper_bound": "12400",
+          "rate": "0.10"
+        },
+        {
+          "upper_bound": "50400",
+          "rate": "0.12"
+        },
+        {
+          "upper_bound": "105700",
+          "rate": "0.22"
+        },
+        {
+          "upper_bound": "201775",
+          "rate": "0.24"
+        },
+        {
+          "upper_bound": "256225",
+          "rate": "0.32"
+        },
+        {
+          "upper_bound": "640600",
+          "rate": "0.35"
+        },
+        {
+          "upper_bound": null,
+          "rate": "0.37"
+        }
+      ],
+      "mfj": [
+        {
+          "upper_bound": "24800",
+          "rate": "0.10"
+        },
+        {
+          "upper_bound": "100800",
+          "rate": "0.12"
+        },
+        {
+          "upper_bound": "211400",
+          "rate": "0.22"
+        },
+        {
+          "upper_bound": "403550",
+          "rate": "0.24"
+        },
+        {
+          "upper_bound": "512450",
+          "rate": "0.32"
+        },
+        {
+          "upper_bound": "768700",
+          "rate": "0.35"
+        },
+        {
+          "upper_bound": null,
+          "rate": "0.37"
+        }
+      ],
+      "mfs": [
+        {
+          "upper_bound": "12400",
+          "rate": "0.10"
+        },
+        {
+          "upper_bound": "50400",
+          "rate": "0.12"
+        },
+        {
+          "upper_bound": "105700",
+          "rate": "0.22"
+        },
+        {
+          "upper_bound": "201775",
+          "rate": "0.24"
+        },
+        {
+          "upper_bound": "256225",
+          "rate": "0.32"
+        },
+        {
+          "upper_bound": "384350",
+          "rate": "0.35"
+        },
+        {
+          "upper_bound": null,
+          "rate": "0.37"
+        }
+      ],
+      "hoh": [
+        {
+          "upper_bound": "17700",
+          "rate": "0.10"
+        },
+        {
+          "upper_bound": "67450",
+          "rate": "0.12"
+        },
+        {
+          "upper_bound": "105700",
+          "rate": "0.22"
+        },
+        {
+          "upper_bound": "201750",
+          "rate": "0.24"
+        },
+        {
+          "upper_bound": "256200",
+          "rate": "0.32"
+        },
+        {
+          "upper_bound": "640600",
+          "rate": "0.35"
+        },
+        {
+          "upper_bound": null,
+          "rate": "0.37"
+        }
+      ]
+    },
+    "standard_deduction": {
+      "single": "16100",
+      "mfj": "32200",
+      "mfs": "16100",
+      "hoh": "24150"
+    },
+    "qbi_deduction_rate": "0.20",
+    "se_tax": {
+      "net_earnings_factor": "0.9235",
+      "social_security_rate": "0.124",
+      "social_security_wage_base": "184500",
+      "medicare_rate": "0.029",
+      "additional_medicare_rate": "0.009",
+      "additional_medicare_threshold": {
+        "single": "200000",
+        "mfj": "250000",
+        "mfs": "125000",
+        "hoh": "200000"
+      }
+    },
+    "safe_harbor_high_income_threshold": {
+      "single": "150000",
+      "mfj": "150000",
+      "mfs": "75000",
+      "hoh": "150000"
+    },
+    "safe_harbor_high_income_rate": "1.10"
+  },
+  "state": {
+    "OH": {
+      "brackets": [
+        {
+          "upper_bound": "26050",
+          "rate": "0.00"
+        },
+        {
+          "upper_bound": null,
+          "rate": "0.0275"
+        }
+      ],
+      "business_income_deduction": {
+        "exempt_up_to": "250000",
+        "rate_above_exemption": "0.03"
+      }
+    }
+  },
+  "municipal": {
+    "toledo-oh": {
+      "name": "Toledo",
+      "flat_rate": "0.025"
+    }
+  }
+}

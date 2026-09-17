@@ -21,7 +21,10 @@ use jwt_simple::{
 };
 use nb_lib::{
     models::{custom_claims::CustomClaims, person::Person},
-    services::{s_persons::PersonsService, s_posts::PostsService},
+    services::{
+        s_finance::FinanceService, s_persons::PersonsService, s_posts::PostsService,
+        s_tax::TaxService,
+    },
 };
 use tower::{layer::util::Stack, ServiceBuilder};
 use tower_http::request_id::{
@@ -38,6 +41,8 @@ use crate::{
 pub struct NbBlogServices {
     pub posts: PostsService,
     pub persons: PersonsService,
+    pub finance: FinanceService,
+    pub tax: TaxService,
 }
 
 #[instrument(skip(req, next))]
