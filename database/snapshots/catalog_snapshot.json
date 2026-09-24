@@ -1,0 +1,565 @@
+{
+  "version": 2,
+  "entities": [
+    {
+      "kind": "field",
+      "scope": "expense_record",
+      "name": "amount",
+      "source_path": "database/schema/expense_record.surql",
+      "statement_hash": "cc82cf8cc4a150e25cd55f676d21b10da3af8b1a8a0832e0cc882102ad35ba5a",
+      "file_hash": "fafece7acbad75d5bf470b6256fb5f2e015f0fe1bac8f742563add1369293013"
+    },
+    {
+      "kind": "field",
+      "scope": "expense_record",
+      "name": "category",
+      "source_path": "database/schema/expense_record.surql",
+      "statement_hash": "b7da3d1543f6a2aef9cd7f26e0d31aa1125331a8af67db1ac701bd2f0d3a9e3e",
+      "file_hash": "fafece7acbad75d5bf470b6256fb5f2e015f0fe1bac8f742563add1369293013"
+    },
+    {
+      "kind": "field",
+      "scope": "expense_record",
+      "name": "date",
+      "source_path": "database/schema/expense_record.surql",
+      "statement_hash": "cb67cf0a7c1ef33548b08348b3757da177f55f0d0ae89c964ba9dae21d8e7977",
+      "file_hash": "fafece7acbad75d5bf470b6256fb5f2e015f0fe1bac8f742563add1369293013"
+    },
+    {
+      "kind": "field",
+      "scope": "expense_record",
+      "name": "deductible",
+      "source_path": "database/schema/expense_record.surql",
+      "statement_hash": "da66d30c80f2fc36a1241e6fbde7d6c3b54ad83584b4e2b0a3a0d40fc59859dc",
+      "file_hash": "fafece7acbad75d5bf470b6256fb5f2e015f0fe1bac8f742563add1369293013"
+    },
+    {
+      "kind": "field",
+      "scope": "expense_record",
+      "name": "meta",
+      "source_path": "database/schema/expense_record.surql",
+      "statement_hash": "b6e1c61c77af16c903e401e1f3b8b41b099151fb544836fe00b31c2d6d297bef",
+      "file_hash": "fafece7acbad75d5bf470b6256fb5f2e015f0fe1bac8f742563add1369293013"
+    },
+    {
+      "kind": "field",
+      "scope": "expense_record",
+      "name": "note",
+      "source_path": "database/schema/expense_record.surql",
+      "statement_hash": "1244caa1d89ac2cd2a0b59d5bd214c1a0a03bd346a804ff419061194d1e5a232",
+      "file_hash": "fafece7acbad75d5bf470b6256fb5f2e015f0fe1bac8f742563add1369293013"
+    },
+    {
+      "kind": "field",
+      "scope": "expense_record",
+      "name": "person",
+      "source_path": "database/schema/expense_record.surql",
+      "statement_hash": "3b89d10ec348ecb12008cc47c0a901b9186bd9101b56b44a48a8144925cd0d1b",
+      "file_hash": "fafece7acbad75d5bf470b6256fb5f2e015f0fe1bac8f742563add1369293013"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "amount",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "1d80a5bca166a8d79fe83baef47b9161e33bf31f3a556f032f4c60f8ec544ba6",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "category",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "d6c56a5b8a1c776a4ac6a1e58ec220c11b181a18b71a038c5ae08bedf71e10ad",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "date",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "2fd0d4ba74b6c45c4ab01c8787b7db187a7e76902247682bf8a97baf0add27d5",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "kind",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "f5fa53192f31d8e37d73943bc0bf154eb26e56e244123ddf5fe99f4249de7c40",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "meta",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "bdb2e1b8dd589996518937a82ebcc1da1eadb281da1ee872c8d2d528aac43dd6",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "note",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "1ad9052a955cd24a9789c79dc3c4148940f0a64ad565c7ac5d1ec2da757039db",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "payer",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "c6969c2062207ec77ec007865799a7239b89588db35e33254184df89368c28e2",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "person",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "bffa6a7185ce4b813490c0e8917458c6cdbac5fc4e4cc3c5937ab56eb5c4d6d2",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "withholding",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "d31dabb5101931a614538064dda15397b453025ceafde1776aaa28ba0a74e9cf",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "withholding.federal",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "b7b759ab73c960549f8f0299150d2af62a3e7144f0029337c9fbeef41e28d46e",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "withholding.local",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "832bc9558116518e4adc775b3a0fc9004924a0ef383481a01acca29ecade2dda",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "income_record",
+      "name": "withholding.state",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "c5f3156d2a917d206b29005696471a29383648e14f5c866c60bb135bc396b242",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "field",
+      "scope": "meta",
+      "name": "created_by",
+      "source_path": "database/schema/meta.surql",
+      "statement_hash": "8d2a0381db4eebda64f2f54a0983be19689c1d3eea3cd9ed4ed911e63278d8c9",
+      "file_hash": "f33df25f23ba78d3bb62e43d6d246be540ea86ab58dc6a173580e6e30c87bd27"
+    },
+    {
+      "kind": "field",
+      "scope": "meta",
+      "name": "created_on",
+      "source_path": "database/schema/meta.surql",
+      "statement_hash": "ffc0b974786babcd16eea7177cbcfe24ab17e3988118ab1395f15e2fc985439e",
+      "file_hash": "f33df25f23ba78d3bb62e43d6d246be540ea86ab58dc6a173580e6e30c87bd27"
+    },
+    {
+      "kind": "field",
+      "scope": "meta",
+      "name": "data",
+      "source_path": "database/schema/meta.surql",
+      "statement_hash": "d3e0e77502a9c123e4c15d035b75cddf04453240d49bb80759cea28dc2421d54",
+      "file_hash": "f33df25f23ba78d3bb62e43d6d246be540ea86ab58dc6a173580e6e30c87bd27"
+    },
+    {
+      "kind": "field",
+      "scope": "meta",
+      "name": "deleted_by",
+      "source_path": "database/schema/meta.surql",
+      "statement_hash": "8afb35b501bada47574a2b19c039069d5dc22a519825029f3bbf55a4c74bfd07",
+      "file_hash": "f33df25f23ba78d3bb62e43d6d246be540ea86ab58dc6a173580e6e30c87bd27"
+    },
+    {
+      "kind": "field",
+      "scope": "meta",
+      "name": "deleted_on",
+      "source_path": "database/schema/meta.surql",
+      "statement_hash": "37f6772e603754e0b8ea9d783019d881e70fdbe2aba6adeca862c72a5f9dbd69",
+      "file_hash": "f33df25f23ba78d3bb62e43d6d246be540ea86ab58dc6a173580e6e30c87bd27"
+    },
+    {
+      "kind": "field",
+      "scope": "meta",
+      "name": "modified_by",
+      "source_path": "database/schema/meta.surql",
+      "statement_hash": "5905fdeeb77d09ee3fdaa48cb5cef06362a8d16dfe117d0f14c06e028ea6edde",
+      "file_hash": "f33df25f23ba78d3bb62e43d6d246be540ea86ab58dc6a173580e6e30c87bd27"
+    },
+    {
+      "kind": "field",
+      "scope": "meta",
+      "name": "modified_on",
+      "source_path": "database/schema/meta.surql",
+      "statement_hash": "d160f4a851a7b025951caef7ff3a5a49b306f82358ede948155b14cd046c7229",
+      "file_hash": "f33df25f23ba78d3bb62e43d6d246be540ea86ab58dc6a173580e6e30c87bd27"
+    },
+    {
+      "kind": "field",
+      "scope": "nb_token",
+      "name": "meta",
+      "source_path": "database/schema/token.surql",
+      "statement_hash": "a4cb0784a71581eb6d34954c08c78f7ac496da7211b57070858ed0e2d941f466",
+      "file_hash": "1bcd08a5b0189c1596189607ff4c1dc90b3f3cf38c5816e40aaecdc2c3e1b46e"
+    },
+    {
+      "kind": "field",
+      "scope": "nb_token",
+      "name": "person",
+      "source_path": "database/schema/token.surql",
+      "statement_hash": "71927d7fce8564c051949314170f985d9824f66f2739bb7cb954b51a78199f03",
+      "file_hash": "1bcd08a5b0189c1596189607ff4c1dc90b3f3cf38c5816e40aaecdc2c3e1b46e"
+    },
+    {
+      "kind": "field",
+      "scope": "person",
+      "name": "email",
+      "source_path": "database/schema/person.surql",
+      "statement_hash": "fedeb58889057253d65e70e6c20f5441839f0549110d538cb426729b4e6d7887",
+      "file_hash": "d4ea784463a916742bfa39d8fb0ad1d8396c97b09f84d735791d4f06c22c1f0f"
+    },
+    {
+      "kind": "field",
+      "scope": "person",
+      "name": "is_admin",
+      "source_path": "database/schema/person.surql",
+      "statement_hash": "037dd190ade5aa2d3592aa85b53beee99294585d8ffcd6f943fe1ea094b47e0f",
+      "file_hash": "d4ea784463a916742bfa39d8fb0ad1d8396c97b09f84d735791d4f06c22c1f0f"
+    },
+    {
+      "kind": "field",
+      "scope": "person",
+      "name": "meta",
+      "source_path": "database/schema/person.surql",
+      "statement_hash": "8ac36b737d2122f04bdd64eff1b31d695f03186963471e758304240b5c9cb368",
+      "file_hash": "d4ea784463a916742bfa39d8fb0ad1d8396c97b09f84d735791d4f06c22c1f0f"
+    },
+    {
+      "kind": "field",
+      "scope": "person",
+      "name": "pass_hash",
+      "source_path": "database/schema/person.surql",
+      "statement_hash": "ff201b2a70c01d7067a4e97a4a9720fcdb1f49e408a67bb56ee7df6004933815",
+      "file_hash": "d4ea784463a916742bfa39d8fb0ad1d8396c97b09f84d735791d4f06c22c1f0f"
+    },
+    {
+      "kind": "field",
+      "scope": "person",
+      "name": "username",
+      "source_path": "database/schema/person.surql",
+      "statement_hash": "f2051f61aa1c3ad2062035b5b47d4de285e1c1354b2ee6d395260f1955711b04",
+      "file_hash": "d4ea784463a916742bfa39d8fb0ad1d8396c97b09f84d735791d4f06c22c1f0f"
+    },
+    {
+      "kind": "field",
+      "scope": "post",
+      "name": "meta",
+      "source_path": "database/schema/post.surql",
+      "statement_hash": "176d9a9d07c4034a6f1ef51cbdcd38fe4b8f403707a18da394b24d4a6815a665",
+      "file_hash": "aba8dc760c48b10b04681100582b05c6e44cc12166d604fa31ad9c1bc18480f7"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_payment",
+      "name": "amount",
+      "source_path": "database/schema/tax_payment.surql",
+      "statement_hash": "6dc07b262e32350c3d521b51ed0ecc5cba3a0987276006832f6f37175d08ce9c",
+      "file_hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_payment",
+      "name": "date",
+      "source_path": "database/schema/tax_payment.surql",
+      "statement_hash": "f3f64e64e81a39582e4a47813b3c12e7c60f7f07bd007d7924903d094c4b2286",
+      "file_hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_payment",
+      "name": "jurisdiction",
+      "source_path": "database/schema/tax_payment.surql",
+      "statement_hash": "320b47dc62106f52866f422ff757f88b7fded7de8e979f9d6e03ae5aa2701afb",
+      "file_hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_payment",
+      "name": "meta",
+      "source_path": "database/schema/tax_payment.surql",
+      "statement_hash": "ecaf10beff6f51bc37158dc63353dd5669378a3e85d5381e7c40dc2c2fd96e85",
+      "file_hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_payment",
+      "name": "note",
+      "source_path": "database/schema/tax_payment.surql",
+      "statement_hash": "65a473661d636e0daa40345d5c8bb1ccc7011f0a9fa4b179f5a735ae42e4e7ec",
+      "file_hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_payment",
+      "name": "person",
+      "source_path": "database/schema/tax_payment.surql",
+      "statement_hash": "b7c8335c5aee3df5748070a97b430a3e53a918f4fda815ac0465515843bc98f6",
+      "file_hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_payment",
+      "name": "quarter",
+      "source_path": "database/schema/tax_payment.surql",
+      "statement_hash": "54fb0cf29a9eec223ac63a8b2b60eef1e69095b2adc075aea2bcc583fa95dad4",
+      "file_hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_payment",
+      "name": "year",
+      "source_path": "database/schema/tax_payment.surql",
+      "statement_hash": "d755142dd869e65b12050b907e23a96b2483e651357ea0c2587739f33509d638",
+      "file_hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_profile",
+      "name": "city",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "5c279024fee805bbba3c3e39467e0ed9d88f83735dc4b3322bbd83efb5f10554",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_profile",
+      "name": "deductions",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "efcfb56f78b751a3f7914de0f98db0a69239e49a35e8057fbfea3eac275c160e",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_profile",
+      "name": "filing_status",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "6e2671fc40d1ab2a58d377156f92cbf8e61cd37936e930d6a93e965f1a5307b6",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_profile",
+      "name": "meta",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "e9dd78ea1011bbc691af0923719f2e5b1f9c6a244e91574da33f023c48b07d8e",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_profile",
+      "name": "person",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "f7cd771d26cda46499282214e51cf63feee4e0ea90f88f7b352b64de3d027d43",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_profile",
+      "name": "prefer_itemized",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "2e26b3ee3f578ae6c09981bba885436b7fcdff60fd3b0dc6555509b5572160d5",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_profile",
+      "name": "prior_year_agi",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "171544796c9f0ad3bb8c009a508ed709ea0c0f835f68ab4698def0f0a56c7f35",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_profile",
+      "name": "prior_year_total_tax",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "d7e8770ade507a8c0e1a658c97895dae3f64920a61c9bdb3b4196c18ad9d64e3",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_profile",
+      "name": "state",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "8aeb8b60e6175b0832cfbc69b82876ac68a11927398ad17cab67107ea812c890",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_profile",
+      "name": "year",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "77a3c0027dfdc90a550e132f5d3a94401512fa320adaf9ab37e17e9dd526bbb7",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_rules",
+      "name": "meta",
+      "source_path": "database/schema/tax_rules.surql",
+      "statement_hash": "a5f1ef5d65d358b90807aec7799ecc99ae019a22c7b7f9eae94436cd38de28cb",
+      "file_hash": "a8875f79837cc8a547a4514872c951daf1c011b5e575c4e86279f7cf666ee6e6"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_rules",
+      "name": "rules",
+      "source_path": "database/schema/tax_rules.surql",
+      "statement_hash": "a65616399589a3ecc8a53ccef1baf9f482ea794fba1240f628b15b98d32b1d62",
+      "file_hash": "a8875f79837cc8a547a4514872c951daf1c011b5e575c4e86279f7cf666ee6e6"
+    },
+    {
+      "kind": "field",
+      "scope": "tax_rules",
+      "name": "year",
+      "source_path": "database/schema/tax_rules.surql",
+      "statement_hash": "19e0fa16f7f2b264ffffba45ff2712c14e8511e6e6f4b6bdd9694326b8ec4d5a",
+      "file_hash": "a8875f79837cc8a547a4514872c951daf1c011b5e575c4e86279f7cf666ee6e6"
+    },
+    {
+      "kind": "function",
+      "scope": null,
+      "name": "fn::string_id",
+      "source_path": "database/schema/functions.surql",
+      "statement_hash": "097d729beec874aef8479126a6cc43c1888472b901ea9acbef9f5a56bc88b6fb",
+      "file_hash": "f8d76d5a65bf56c2a665976a21c584b423fa13aabe4aed113925f7029c75a4a2"
+    },
+    {
+      "kind": "index",
+      "scope": "expense_record",
+      "name": "expense_person_date",
+      "source_path": "database/schema/expense_record.surql",
+      "statement_hash": "22c84b562ae424f98d30adcd4382a2db2fc6d1c71cecd34e2ca9084a87483e8a",
+      "file_hash": "fafece7acbad75d5bf470b6256fb5f2e015f0fe1bac8f742563add1369293013"
+    },
+    {
+      "kind": "index",
+      "scope": "income_record",
+      "name": "income_person_date",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "e21701f723ba59ceefdfcbcb8cb22d653ab1c782a5dd76b1385b8216fee2f959",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "index",
+      "scope": "tax_payment",
+      "name": "payment_person_year",
+      "source_path": "database/schema/tax_payment.surql",
+      "statement_hash": "3de580abb4a04a13794414afa4fcaa09add76025ad39ddb93f6b8344f0c8dbfb",
+      "file_hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "kind": "index",
+      "scope": "tax_profile",
+      "name": "tax_profile_person_year",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "05ccc4143c140f2fe8f64307ab473021425c5cd1bbd0e91ac46b1be8c1aa3194",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "index",
+      "scope": "tax_rules",
+      "name": "tax_rules_year",
+      "source_path": "database/schema/tax_rules.surql",
+      "statement_hash": "d4eba94fb84a506f8617e188298b664b6451ca799da99accca9d06e68cae6565",
+      "file_hash": "a8875f79837cc8a547a4514872c951daf1c011b5e575c4e86279f7cf666ee6e6"
+    },
+    {
+      "kind": "table",
+      "scope": null,
+      "name": "expense_record",
+      "source_path": "database/schema/expense_record.surql",
+      "statement_hash": "df92dc6278a52ab7a934c630968792a040ac1ec30b2904adfd2e7acc430efe38",
+      "file_hash": "fafece7acbad75d5bf470b6256fb5f2e015f0fe1bac8f742563add1369293013"
+    },
+    {
+      "kind": "table",
+      "scope": null,
+      "name": "income_record",
+      "source_path": "database/schema/income_record.surql",
+      "statement_hash": "8cb9b1766cad9a7792ebeb4aae75c52d72b909c46495910f3d556d77bcbaf01c",
+      "file_hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "kind": "table",
+      "scope": null,
+      "name": "meta",
+      "source_path": "database/schema/meta.surql",
+      "statement_hash": "5cbd7b2e7f6fffb25a4c6412cecb354a730702579e3fa3d646430111275db925",
+      "file_hash": "f33df25f23ba78d3bb62e43d6d246be540ea86ab58dc6a173580e6e30c87bd27"
+    },
+    {
+      "kind": "table",
+      "scope": null,
+      "name": "nb_token",
+      "source_path": "database/schema/token.surql",
+      "statement_hash": "e417a347490f411839e01d1223a7fc08258a5c7722dc9584c87526ed811945f6",
+      "file_hash": "1bcd08a5b0189c1596189607ff4c1dc90b3f3cf38c5816e40aaecdc2c3e1b46e"
+    },
+    {
+      "kind": "table",
+      "scope": null,
+      "name": "person",
+      "source_path": "database/schema/person.surql",
+      "statement_hash": "72c25a049d79b6cb32121ceefbb2180858628bc2081f9f32044d9257c912225d",
+      "file_hash": "d4ea784463a916742bfa39d8fb0ad1d8396c97b09f84d735791d4f06c22c1f0f"
+    },
+    {
+      "kind": "table",
+      "scope": null,
+      "name": "post",
+      "source_path": "database/schema/post.surql",
+      "statement_hash": "20a9c7555dcbd4771e8edf3cd869fa03113c609238eb1299e66f92ebdc668caf",
+      "file_hash": "aba8dc760c48b10b04681100582b05c6e44cc12166d604fa31ad9c1bc18480f7"
+    },
+    {
+      "kind": "table",
+      "scope": null,
+      "name": "tax_payment",
+      "source_path": "database/schema/tax_payment.surql",
+      "statement_hash": "1ef1767781df24f6ab71c20bc5211c709802959c4c07e612e407326ee816bd85",
+      "file_hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "kind": "table",
+      "scope": null,
+      "name": "tax_profile",
+      "source_path": "database/schema/tax_profile.surql",
+      "statement_hash": "0353eaefad5404551f76dfe22cffb241b408262b450dd09295e75dc0407f7cbe",
+      "file_hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "kind": "table",
+      "scope": null,
+      "name": "tax_rules",
+      "source_path": "database/schema/tax_rules.surql",
+      "statement_hash": "038f3e429652e74cfbed1fd86ff01d9efe5629e19d29144f14d7d67010e10518",
+      "file_hash": "a8875f79837cc8a547a4514872c951daf1c011b5e575c4e86279f7cf666ee6e6"
+    }
+  ]
+}

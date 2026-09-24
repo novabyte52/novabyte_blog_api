@@ -29,12 +29,11 @@ impl PostsService {
 
         let db = NovaDB::new(&self.conn).await.expect("db connect failed");
 
-        let mut resp = db
-            .exec(self.repo.query_select_post(&post_id))
-            .await
-            .expect("db query failed");
-
-        resp.take_one::<Post>(0).expect("post not found")
+        if let Ok(mut resp) = db.exec(self.repo.query_select_post(&post_id)).await {
+            resp.take_one::<Post>(0).expect("post not found")
+        } else {
+            panic!("unable to get post");
+        }
     }
 
     #[instrument(skip(self))]

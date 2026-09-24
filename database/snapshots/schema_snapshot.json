@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "database/schema/expense_record.surql",
+      "hash": "fafece7acbad75d5bf470b6256fb5f2e015f0fe1bac8f742563add1369293013"
+    },
+    {
+      "path": "database/schema/functions.surql",
+      "hash": "f8d76d5a65bf56c2a665976a21c584b423fa13aabe4aed113925f7029c75a4a2"
+    },
+    {
+      "path": "database/schema/income_record.surql",
+      "hash": "c49fdfca7ff66e08649d1d456d0cee868d622b3c1d708539097c97b63d0725df"
+    },
+    {
+      "path": "database/schema/meta.surql",
+      "hash": "f33df25f23ba78d3bb62e43d6d246be540ea86ab58dc6a173580e6e30c87bd27"
+    },
+    {
+      "path": "database/schema/person.surql",
+      "hash": "d4ea784463a916742bfa39d8fb0ad1d8396c97b09f84d735791d4f06c22c1f0f"
+    },
+    {
+      "path": "database/schema/post.surql",
+      "hash": "aba8dc760c48b10b04681100582b05c6e44cc12166d604fa31ad9c1bc18480f7"
+    },
+    {
+      "path": "database/schema/tax_payment.surql",
+      "hash": "41974cf9a8a68d345c8bf00b43075d7dc88dbdf0072a0b24d93bd43888330b57"
+    },
+    {
+      "path": "database/schema/tax_profile.surql",
+      "hash": "ee215dd8b2b46a947fcb769f838517b12fd2deebf51590c151d47fa840646982"
+    },
+    {
+      "path": "database/schema/tax_rules.surql",
+      "hash": "a8875f79837cc8a547a4514872c951daf1c011b5e575c4e86279f7cf666ee6e6"
+    },
+    {
+      "path": "database/schema/token.surql",
+      "hash": "1bcd08a5b0189c1596189607ff4c1dc90b3f3cf38c5816e40aaecdc2c3e1b46e"
+    }
+  ]
+}

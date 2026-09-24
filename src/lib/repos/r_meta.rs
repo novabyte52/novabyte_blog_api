@@ -53,6 +53,49 @@ impl MetaRepo {
         )
     }
 
+    /// SQL snippet: resolve `$rec_id` from `table` via `resolve_where` — a
+    /// `WHERE` clause that must match at most one row and, critically, is
+    /// the *only* place ownership/existence is checked — then apply
+    /// `set_clause` to it and stamp its meta as touched by `meta_touch_by`.
+    ///
+    /// Every following statement in the surrounding query (a trailing
+    /// `SELECT ... WHERE id = $rec_id`, say) is scoped by construction: it
+    /// only ever sees the record `resolve_where` matched. There is no
+    /// separate `WHERE person = $person` on a later statement for a query
+    /// author to forget, which is how an update's meta-stamp and its
+    /// caller-facing `SELECT` previously ended up touching and returning
+    /// records that didn't belong to the caller — the `resolve_where` guard
+    /// exists exactly once and covers everything downstream of it.
+    ///
+    /// Wrapped in `IF $rec_id != NONE` because `UPDATE NONE` is a runtime
+    /// error in SurrealDB, not a no-op: when `resolve_where` matches
+    /// nothing, `$rec_id` is `NONE`, both `UPDATE`s are skipped, and the
+    /// trailing `SELECT` cleanly returns nothing instead of the query
+    /// erroring out.
+    ///
+    /// The caller must bind whatever variables `resolve_where`, `set_clause`,
+    /// and `meta_touch_by` reference.
+    pub fn sql_scoped_update(
+        &self,
+        table: &str,
+        resolve_where: &str,
+        set_clause: &str,
+        meta_touch_by: &str,
+    ) -> String {
+        format!(
+            r#"
+            LET $rec_id = (SELECT id FROM ONLY {table} WHERE {resolve_where} LIMIT 1).id;
+
+            IF $rec_id != NONE {{
+                UPDATE $rec_id SET {set_clause};
+
+                UPDATE (SELECT meta FROM ONLY $rec_id LIMIT 1).meta
+                SET modified_on = time::now(), modified_by = {meta_touch_by};
+            }};
+            "#
+        )
+    }
+
     /// Standalone query: select a Meta record by id.
     pub fn query_select_meta(&self, meta_id: &str) -> NovaQuery {
         let sql = r#"

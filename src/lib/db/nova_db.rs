@@ -8,7 +8,7 @@ use serde_json::Value as JsonValue;
 use surrealdb::engine::any::{connect, Any};
 use surrealdb::method::Transaction;
 use surrealdb::opt::auth::Database;
-use surrealdb::types::{SurrealValue, Value as SurrealVal};
+use surrealdb::types::{Array, Object, SurrealValue, Value as SurrealVal};
 use surrealdb::{Error as DbError, IndexedResults, Surreal};
 
 use tracing::instrument;
@@ -153,6 +153,16 @@ impl NovaDB {
     pub async fn exec(&self, q: NovaQuery) -> Result<NovaResponse, DbError> {
         Ok(self.db.query(&q.sql).bind(q.args).await?.into())
     }
+
+    /// Execute a single-statement `SELECT ...` query and extract the whole
+    /// result as `Vec<T>` in one call — the "select a list of records"
+    /// shape repeated across `list_income`/`list_expenses`/`list_payments`
+    /// and their equivalents in the estimate path, without each call site
+    /// writing out `exec` + `take_vec::<T>(0)` by hand.
+    #[instrument(skip(self, q))]
+    pub async fn exec_vec<T: DeserializeOwned>(&self, q: NovaQuery) -> Result<Vec<T>, DbError> {
+        self.exec(q).await?.take_vec::<T>(0)
+    }
 }
 
 /// A SQL query with typed variable bindings ready for execution via [`NovaDB::exec`].
@@ -179,5 +189,53 @@ impl NovaQuery {
     pub fn bind(mut self, key: &str, val: impl SurrealValue) -> Self {
         self.args.insert(key.to_string(), val.into_value());
         self
+    }
+
+    /// Bind any `Serialize` value by routing it through `serde_json`.
+    ///
+    /// Use this for nested structures — enums, sub-objects, arrays — that have
+    /// no direct [`SurrealValue`] impl. They land in SurrealDB as native
+    /// objects and arrays, so the same serde definition reads them back out
+    /// through [`NovaResponse`], which also converts via JSON.
+    ///
+    /// Panics if the value cannot be serialized, which for the model types
+    /// here means a bug rather than bad input.
+    pub fn bind_json(self, key: &str, val: &impl serde::Serialize) -> Self {
+        let json = serde_json::to_value(val).expect("model value must serialize to JSON");
+        self.bind(key, json_to_surreal(json))
+    }
+}
+
+/// Convert JSON into a SurrealDB value, mapping `null` to `NONE`.
+///
+/// This mapping is the whole reason the conversion isn't left to the blanket
+/// `SurrealValue` impl for `serde_json::Value`. Rust models spell "absent" as
+/// `Option::None`, which serde writes as JSON `null` — but SurrealDB treats
+/// `NULL` and `NONE` as different values, and a field declared
+/// `TYPE option<string>` rejects `NULL`. Without this, every insert carrying
+/// an empty optional field fails its type assertion.
+pub fn json_to_surreal(value: JsonValue) -> SurrealVal {
+    match value {
+        JsonValue::Null => SurrealVal::None,
+        JsonValue::Bool(b) => SurrealVal::Bool(b),
+        JsonValue::String(s) => SurrealVal::String(s),
+        JsonValue::Number(n) => match (n.as_i64(), n.as_f64()) {
+            (Some(i), _) => i.into_value(),
+            (None, Some(f)) => f.into_value(),
+            // A number serde_json can represent but neither i64 nor f64 can
+            // hold exactly (a u64 above i64::MAX). Keep the exact text rather
+            // than silently rounding it.
+            (None, None) => SurrealVal::String(n.to_string()),
+        },
+        JsonValue::Array(a) => {
+            SurrealVal::Array(a.into_iter().map(json_to_surreal).collect::<Array>())
+        }
+        JsonValue::Object(o) => {
+            let mut obj = Object::new();
+            for (k, v) in o {
+                obj.insert(k, json_to_surreal(v));
+            }
+            SurrealVal::Object(obj)
+        }
     }
 }

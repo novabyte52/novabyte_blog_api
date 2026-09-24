@@ -1,0 +1,7 @@
+# Template variables for use in .surql schema and seed files.
+# Values here have the lowest priority:
+#   --var KEY=VALUE  >  SURREALKIT_VAR_KEY env vars  >  this file
+#
+# [variables]
+# schema_prefix = "myapp"
+# environment   = "development"

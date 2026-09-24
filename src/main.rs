@@ -7,7 +7,7 @@ use axum::{
         HeaderValue, Method,
     },
     middleware::{from_fn, from_fn_with_state},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
@@ -17,7 +17,10 @@ use constants::{
 };
 use nb_lib::{
     db::SurrealDBConnection,
-    services::{s_persons::PersonsService, s_posts::PostsService},
+    services::{
+        s_finance::FinanceService, s_persons::PersonsService, s_posts::PostsService,
+        s_tax::TaxService,
+    },
 };
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
 use surrealdb::{engine::any::connect, opt::auth::Database};
@@ -33,6 +36,11 @@ pub mod middleware;
 pub mod utils;
 
 use controllers::{
+    c_finance::{
+        create_expense, create_income, create_payment, delete_expense, delete_income,
+        delete_payment, get_expenses, get_income, get_payments, get_summary, update_expense,
+        update_income,
+    },
     c_persons::{
         get_persons, handle_check_person_validity, handle_get_person, login_person, logout_person,
         refresh_token, signup_person,
@@ -40,6 +48,10 @@ use controllers::{
     c_posts::{
         get_draft, get_drafted_posts, get_post_drafts, get_posts, get_published_posts,
         handle_create_draft, handle_get_random_post, publish_draft, unpublish_post,
+    },
+    c_tax::{
+        get_estimate, get_rule_years, get_tax_profile, get_tax_rules, put_tax_profile,
+        put_tax_rules, seed_tax_rules,
     },
 };
 use middleware::{get_request_id_service, is_admin, require_authentication, NbBlogServices};
@@ -101,7 +113,8 @@ async fn connect_to_db() {
     .await
     .expect("Unable to login to database. Review credentials.");
 
-    // TODO: re-add migration runner once surrealdb_migrations supports surrealdb 3.x
+    // Schema is applied out-of-band via SurrealKit (`database/`, see
+    // Makefile.toml's db-* tasks), not at app startup.
 }
 
 // #[instrument]
@@ -116,7 +129,7 @@ async fn init_api() -> Router {
                 .parse::<HeaderValue>()
                 .expect("Unable to read allowed origin."),
         )
-        .allow_methods([Method::GET, Method::POST, Method::DELETE])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers([AUTHORIZATION, CONTENT_TYPE, COOKIE])
         .allow_credentials(true);
 
@@ -133,6 +146,29 @@ async fn init_api() -> Router {
         .route("/posts/drafts/{draft_id}/publish", post(publish_draft))
         .route("/posts/drafts/{draft_id}/publish", delete(unpublish_post))
         .route("/posts/{post_id}/drafts", get(get_post_drafts))
+        //
+        // admin finance routes — private bookkeeping, scoped to the caller
+        .route("/finance/summary", get(get_summary))
+        .route("/finance/estimate", get(get_estimate))
+        .route("/finance/income", get(get_income))
+        .route("/finance/income", post(create_income))
+        .route("/finance/income/{record_id}", put(update_income))
+        .route("/finance/income/{record_id}", delete(delete_income))
+        .route("/finance/expenses", get(get_expenses))
+        .route("/finance/expenses", post(create_expense))
+        .route("/finance/expenses/{record_id}", put(update_expense))
+        .route("/finance/expenses/{record_id}", delete(delete_expense))
+        .route("/finance/payments", get(get_payments))
+        .route("/finance/payments", post(create_payment))
+        .route("/finance/payments/{record_id}", delete(delete_payment))
+        .route("/finance/tax-profile/{year}", get(get_tax_profile))
+        .route("/finance/tax-profile/{year}", put(put_tax_profile))
+        //
+        // admin tax rule routes
+        .route("/tax/rules", get(get_rule_years))
+        .route("/tax/rules/{year}", get(get_tax_rules))
+        .route("/tax/rules/{year}", put(put_tax_rules))
+        .route("/tax/rules/{year}/seed", post(seed_tax_rules))
         //
         .layer(from_fn(is_admin))
         // ^^ admin layer ^^
@@ -202,6 +238,8 @@ async fn init_services() -> NbBlogServices {
     NbBlogServices {
         posts: PostsService::new(conn.clone()).await,
         persons: PersonsService::new(conn.clone()).await,
+        finance: FinanceService::new(conn.clone()).await,
+        tax: TaxService::new(conn.clone()).await,
     }
 }
 
