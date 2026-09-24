@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
 # Applies every rollout manifest under database/rollouts/ that prod hasn't
-# completed yet, in filename (timestamp) order. Run from the repo/deploy root
-# — expects database/ and a SurrealKit .env.local (SURREALDB_* vars, prod
-# creds) to already be present alongside it. Invoked by the Jenkinsfile
-# "Migrate DB" stage, before the app image is deployed.
-#
-# UNVERIFIED against the real prod droplet — written and reasoned about, not
-# run there. Confirm `surrealkit` is on PATH on the droplet (or swap the
-# invocation for a container on the same Docker network as `surrealdb` if
-# the droplet host itself can't resolve that hostname) before trusting this
-# in a real deploy.
+# completed yet, in filename (timestamp) order. Run from the repo root on
+# the Jenkins agent itself — connects straight to prod over
+# wss://db.novabyte.blog (SURREALDB_* vars from .env.local, see the
+# "Migrate DB" Jenkinsfile stage), no SSH involved. Requires `surrealkit` on
+# PATH (see Dockerfile.agent).
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
