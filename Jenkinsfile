@@ -43,7 +43,7 @@ pipeline {
         //     steps {
         //         withCredentials([file(credentialsId: 'nb-blog-surrealkit-env', variable: 'SURREALKIT_ENV_FILE')]) {
         //             sh '''
-        //                 cp "$SURREALKIT_ENV_FILE" .env.local
+        //                 cp -f "$SURREALKIT_ENV_FILE" .env.local
         //                 mkdir -p /tmp/finance-schema-holding
         //                 mv database/schema/income_record.surql database/schema/expense_record.surql \
         //                    database/schema/tax_payment.surql database/schema/tax_profile.surql \
@@ -71,7 +71,7 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'nb-blog-surrealkit-env', variable: 'SURREALKIT_ENV_FILE')]) {
                     sh '''
-                        cp "$SURREALKIT_ENV_FILE" .env.local
+                        cp -f "$SURREALKIT_ENV_FILE" .env.local
                         chmod +x scripts/migrate-db.sh
                         ./scripts/migrate-db.sh
                     '''
