@@ -28,6 +28,39 @@ pipeline {
             }
         }
 
+        // Applies any rollout manifest(s) under database/rollouts/ that prod
+        // hasn't seen yet — authored and reviewed locally beforehand via
+        // `cargo make db-plan`, never generated in CI. Runs before Deploy so
+        // the app is never started against a schema it doesn't expect yet.
+        //
+        // NOTE: placeholder pending confirmation of two droplet specifics I
+        // can't verify from here — (1) that `surrealkit` is installed on the
+        // droplet (or should run via a container attached to the same
+        // Docker network as `surrealdb`, if it's only reachable that way),
+        // and (2) the actual prod SURREALDB_* credentials, supplied here via
+        // a new Jenkins credential (`nb-blog-surrealkit-env`, same file
+        // format as .env.local) rather than reusing `nb-blog-env-file`
+        // (that one holds the app's DB_* names, not SurrealKit's SURREALDB_*
+        // ones).
+        stage('Migrate DB') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'nb-blog_droplet-deploy-key',
+                        keyFileVariable: 'PK'
+                    ),
+                    file(credentialsId: 'nb-blog-surrealkit-env', variable: 'SURREALKIT_ENV_FILE')
+                ]) {
+                    sh '''
+                        ssh-keyscan -H ${DROPLET_HOST} >> ~/.ssh/known_hosts
+                        scp -i "$PK" -r database scripts/migrate-db.sh ${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/
+                        scp -i "$PK" "$SURREALKIT_ENV_FILE" ${DROPLET_USER}@${DROPLET_HOST}:${DEPLOY_PATH}/.env.local
+                        ssh -i "$PK" ${DROPLET_USER}@${DROPLET_HOST} "cd ${DEPLOY_PATH} && chmod +x migrate-db.sh && ./migrate-db.sh"
+                    '''
+                }
+            }
+        }
+
         stage('Deploy') {
             steps {
                 withCredentials([sshUserPrivateKey(

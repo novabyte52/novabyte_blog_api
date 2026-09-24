@@ -91,3 +91,37 @@ dependencies = ["format", "run"]
 
 [tasks.init-then-start]
 dependencies = ["init-db", "start-db"]
+
+# SurrealKit schema management. Connection info comes from `.env.local`
+# (gitignored, SURREALDB_HOST/NAMESPACE/NAME/USER/PASSWORD/AUTH_LEVEL) for
+# dev tasks; prod tasks take the same vars from the environment instead
+# (see Jenkinsfile), since prod credentials are never committed.
+[tasks.db-sync]
+description = "Apply database/schema/*.surql to the local dev DB immediately (prunes anything not in the files). Dev only."
+command = "surrealkit"
+args = ["sync"]
+
+[tasks.db-sync-watch]
+description = "db-sync, re-running on every schema file change."
+command = "surrealkit"
+args = ["sync", "--watch"]
+
+[tasks.db-plan]
+description = "Diff database/schema/*.surql against the target DB and write a reviewable rollout manifest under database/rollouts/. Pass a name: cargo make db-plan --name my_change"
+command = "surrealkit"
+args = ["rollout", "plan", "${@}"]
+
+[tasks.db-rollout-start]
+description = "Begin applying a rollout manifest: cargo make db-rollout-start <rollout-id>"
+command = "surrealkit"
+args = ["rollout", "start", "${@}"]
+
+[tasks.db-rollout-complete]
+description = "Finish a started rollout: cargo make db-rollout-complete <rollout-id>"
+command = "surrealkit"
+args = ["rollout", "complete", "${@}"]
+
+[tasks.db-rollout-status]
+description = "Show rollout history/state for the target DB."
+command = "surrealkit"
+args = ["rollout", "status"]

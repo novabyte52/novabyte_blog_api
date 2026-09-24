@@ -113,7 +113,8 @@ async fn connect_to_db() {
     .await
     .expect("Unable to login to database. Review credentials.");
 
-    // TODO: re-add migration runner once surrealdb_migrations supports surrealdb 3.x
+    // Schema is applied out-of-band via SurrealKit (`database/`, see
+    // Makefile.toml's db-* tasks), not at app startup.
 }
 
 // #[instrument]

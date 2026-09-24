@@ -1,0 +1,270 @@
+id = "20260921001945__add_finance_tables"
+name = "add_finance_tables"
+source_schema_hash = "50026200496e349e2d5023b7bc79fa3531fc69d35e92e1975eacba2110b2a66a"
+target_schema_hash = "2144ae111571d74cbd18c63201f36c1bb6475cf86ec04c05e162d979757d9adc"
+compatibility = "phased"
+renames = []
+
+[[steps]]
+id = "apply_expand_schema"
+phase = "start"
+kind = "apply_schema"
+files = [
+    "database/schema/expense_record.surql",
+    "database/schema/income_record.surql",
+    "database/schema/tax_payment.surql",
+    "database/schema/tax_profile.surql",
+    "database/schema/tax_rules.surql",
+]
+entities = []
+
+[[steps]]
+id = "rollback_expand_schema"
+phase = "rollback"
+kind = "remove_entities"
+files = []
+
+[[steps.entities]]
+kind = "field"
+scope = "expense_record"
+name = "amount"
+
+[[steps.entities]]
+kind = "field"
+scope = "expense_record"
+name = "category"
+
+[[steps.entities]]
+kind = "field"
+scope = "expense_record"
+name = "date"
+
+[[steps.entities]]
+kind = "field"
+scope = "expense_record"
+name = "deductible"
+
+[[steps.entities]]
+kind = "field"
+scope = "expense_record"
+name = "meta"
+
+[[steps.entities]]
+kind = "field"
+scope = "expense_record"
+name = "note"
+
+[[steps.entities]]
+kind = "field"
+scope = "expense_record"
+name = "person"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "amount"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "category"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "date"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "kind"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "meta"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "note"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "payer"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "person"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "withholding"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "withholding.federal"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "withholding.local"
+
+[[steps.entities]]
+kind = "field"
+scope = "income_record"
+name = "withholding.state"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_payment"
+name = "amount"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_payment"
+name = "date"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_payment"
+name = "jurisdiction"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_payment"
+name = "meta"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_payment"
+name = "note"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_payment"
+name = "person"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_payment"
+name = "quarter"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_payment"
+name = "year"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_profile"
+name = "city"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_profile"
+name = "deductions"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_profile"
+name = "filing_status"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_profile"
+name = "meta"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_profile"
+name = "person"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_profile"
+name = "prefer_itemized"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_profile"
+name = "prior_year_agi"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_profile"
+name = "prior_year_total_tax"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_profile"
+name = "state"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_profile"
+name = "year"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_rules"
+name = "meta"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_rules"
+name = "rules"
+
+[[steps.entities]]
+kind = "field"
+scope = "tax_rules"
+name = "year"
+
+[[steps.entities]]
+kind = "index"
+scope = "expense_record"
+name = "expense_person_date"
+
+[[steps.entities]]
+kind = "index"
+scope = "income_record"
+name = "income_person_date"
+
+[[steps.entities]]
+kind = "index"
+scope = "tax_payment"
+name = "payment_person_year"
+
+[[steps.entities]]
+kind = "index"
+scope = "tax_profile"
+name = "tax_profile_person_year"
+
+[[steps.entities]]
+kind = "index"
+scope = "tax_rules"
+name = "tax_rules_year"
+
+[[steps.entities]]
+kind = "table"
+name = "expense_record"
+
+[[steps.entities]]
+kind = "table"
+name = "income_record"
+
+[[steps.entities]]
+kind = "table"
+name = "tax_payment"
+
+[[steps.entities]]
+kind = "table"
+name = "tax_profile"
+
+[[steps.entities]]
+kind = "table"
+name = "tax_rules"

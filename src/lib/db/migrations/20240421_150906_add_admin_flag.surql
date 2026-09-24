@@ -1,1 +1,0 @@
-UPDATE person SET is_admin = false;
